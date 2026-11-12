@@ -339,7 +339,7 @@ clickAction=async function(action,id){
  if(action==='v3-calendar-day'){v3ui.selectedDay=id;render();return;}
  if(action==='v3-prev-month'||action==='v3-next-month'){
   const [year,m]=v3ui.month.split('-').map(Number),delta=action==='v3-next-month'?1:-1;
-  const d=new Date(Date.UTC(year,m-1+delta,1));v3ui.month=d.toISOString().slice(0,7);render();return;
+  const d=new Date(Date.UTC(year,m-1+delta,1));v3ui.month=d.toISOString().slice(0,7);v3ui.selectedDay=v3ui.month+'-01';render();return;
  }
  if(action==='v3-add-pause'){
   const area=dialog.querySelector('#v3-periods')||dialog.querySelector('#v3-review-periods');if(!area)return;
