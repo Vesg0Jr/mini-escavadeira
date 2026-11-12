@@ -80,3 +80,5 @@
  .v3-forecasts .card{padding:13px}
  .v3-forecasts .card .value{font-size:19px}
 }
+
+.v3-login-logo{display:block;width:min(250px,100%);max-height:55px;object-fit:contain;object-position:left;margin:0 0 24px}
