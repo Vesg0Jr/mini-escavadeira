@@ -1,0 +1,64 @@
+/* Padrão único da barra lateral: ícones SVG 2D de 22px em todas as telas. */
+.sidebar .nav button[data-nav] {
+ position:relative;
+ gap:12px;
+ align-items:center;
+ min-height:46px;
+}
+.sidebar .nav button[data-nav] > .forma-nav-icon,
+.sidebar.v3-collapsed .nav button[data-nav] > .forma-nav-icon {
+ display:inline-flex!important;
+ align-items:center;
+ justify-content:center;
+ width:22px!important;
+ min-width:22px!important;
+ max-width:22px!important;
+ height:22px!important;
+ min-height:22px!important;
+ flex:0 0 22px!important;
+ padding:0!important;
+ margin:0!important;
+ color:inherit;
+ font-size:0!important;
+ background:transparent!important;
+ -webkit-mask:none!important;
+ mask:none!important;
+ overflow:visible;
+}
+.sidebar .nav button[data-nav] .forma-nav-icon svg{
+ display:block;
+ width:22px!important;
+ min-width:22px!important;
+ height:22px!important;
+ stroke:currentColor;
+ fill:none;
+ flex:none;
+}
+.sidebar .nav button.active::before {
+ position:absolute;
+ left:5px;
+ top:50%;
+ transform:translateY(-50%);
+ margin:0;
+ width:4px;
+ height:20px;
+}
+@media (min-width:741px) {
+ .sidebar.v3-collapsed .nav button[data-nav]{
+  gap:0;
+  padding:0!important;
+  justify-content:center;
+ }
+}
+@media (max-width:740px) {
+ .sidebar .nav button[data-nav],
+ .sidebar.v3-collapsed .nav button[data-nav]{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  font-size:14px;
+  gap:13px;
+  min-height:48px;
+  padding:12px 13px;
+ }
+}
