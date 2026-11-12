@@ -101,7 +101,7 @@ export async function v3Route(request,env,user,at){
    const name=requireText(b.client_name,'Nome do cliente',130),
      phone=requireText(b.client_phone,'Telefone',30),
      service=requireText(b.client_service,'Serviço do cliente',200);
-   if(phone.replace(/\\D/g,'').length<10)fail('Digite o telefone com DDD.',400);
+   if(phone.replace(/\D/g,'').length<10)fail('Digite o telefone com DDD.',400);
    clientId=uid();addClient=true;
    client={id:clientId,name,phone,service};
   }
