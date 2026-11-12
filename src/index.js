@@ -1,5 +1,6 @@
 import {segmentAmountCents,segmentDurationMs,maintenanceShares,summarizeJobs} from './math.js';
 import {hashPassword} from './password.js';
+import {manualTotals} from './manual.js';
 
 const HOUR_MS = 3600000;
 const DAY_MS = 86400000;
@@ -14,6 +15,14 @@ const text = (value,max=240) => String(value??'').trim().slice(0,max);
 const requireString = (value,label,max=240) => {const v=text(value,max);if(!v)throw new HttpError(`${label} é obrigatório.`);return v;};
 const amountCents = (v) => {const n=Number(v);if(!Number.isFinite(n)||n<=0||n>1000000)throw new HttpError('Valor inválido.');return Math.round(n*100);};
 const nonNegative = (v,label) => {const n=Number(v);if(!Number.isFinite(n)||n<0||n>10000000)throw new HttpError(`${label} inválido.`);return n;};
+const optionalMeter = (v,label) => v===null||v===undefined||String(v).trim()==='' ? null : nonNegative(v,label);
+function brasiliaDateTime(v,label){
+ const raw=String(v??'').trim();
+ assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw),label+' deve ter data e hora.');
+ const ms=Date.parse(raw+':00-03:00');
+ assert(Number.isFinite(ms)&&new Date(ms-3*3600000).toISOString().slice(0,16)===raw,label+' inválido.');
+ return ms;
+}
 const dateValue = (v) => {const s=text(v,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(s)||Number.isNaN(new Date(s+'T12:00:00Z').getTime()))throw new HttpError('Data inválida.');return s;};
 const safeDate = () => new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
 class HttpError extends Error {constructor(message,status=400){super(message);this.status=status;}}
@@ -196,6 +205,41 @@ async function handler(request,env){
  if(path==='/api/upload'&&method==='POST')return uploadFile(request,env,user);
  const matchFile=path.match(/^\/api\/files\/([a-f0-9-]{36})$/);
  if(matchFile&&method==='GET')return fileResponse(env,user,matchFile[1]);
+ if(path==='/api/jobs/manual'&&method==='POST'){
+  const b=await bodyJson(request);
+  const customer=requireString(b.customer,'Cliente / obra',130);
+  const location=text(b.location,240),description=text(b.description,1200);
+  const operatorId=user.role==='operator'?user.id:requireString(b.operator_id,'Responsável',40);
+  const operator=await env.DB.prepare('SELECT id FROM users WHERE id=? AND role=? AND active=1').bind(operatorId,'operator').first();
+  const own=operatorId===user.id&&user.role!=='operator';
+  assert(operator||own,'Selecione um operador válido.');
+  const startMs=brasiliaDateTime(b.start_at,'Hora inicial');
+  const endMs=brasiliaDateTime(b.end_at,'Hora final');
+  assert(endMs<=at+5*60000,'A hora final não pode estar no futuro.');
+  const startMeter=optionalMeter(b.start_meter,'Horímetro inicial'),endMeter=optionalMeter(b.end_meter,'Horímetro final');
+  assert(startMeter===null||endMeter===null||endMeter>=startMeter,'Horímetro final menor que inicial.');
+  const fileId=b.start_file_id?requireString(b.start_file_id,'Anexo',60):null;
+  if(fileId){const f=await checkFile(env,fileId,user);assert(f.mime_type.startsWith('image/'),'Use uma imagem como anexo da obra.');}
+  const existing=await env.DB.prepare('SELECT id FROM jobs WHERE started_at < ? AND (finished_at IS NULL OR finished_at > ?) LIMIT 1').bind(endMs,startMs).first();
+  assert(!existing,'Já existe uma obra registrada nesse intervalo. Confira o histórico para não duplicar a cobrança.',409);
+  const rate=await env.DB.prepare('SELECT * FROM rates WHERE effective_at <= ? ORDER BY effective_at DESC, id DESC LIMIT 1').bind(startMs).first() ||
+    await env.DB.prepare('SELECT * FROM rates ORDER BY effective_at ASC,id ASC LIMIT 1').first();
+  assert(rate,'Configure a tarifa antes de registrar.',503);
+  let totals;
+  try{totals=manualTotals(startMs,endMs,b.pause_minutes??0,b.manual_hours,rate.amount_cents)}
+  catch(e){throw new HttpError(e.message)}
+  const manualOverride=b.manual_hours!==null&&b.manual_hours!==undefined&&String(b.manual_hours).trim()!==''?totals.worked_minutes:null;
+  const jobId=id();
+  await env.DB.batch([
+   env.DB.prepare(`INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,end_meter,start_file_id,started_at,finished_at,created_by,updated_at,entry_mode,manual_pause_minutes,manual_override_minutes)
+    VALUES(?,?,?,?,?,'finished',?,?,?,?,?,?,?,'manual',?,?)`).bind(jobId,customer,location,description,operatorId,startMeter,endMeter,fileId,startMs,endMs,user.id,at,totals.pause_minutes,manualOverride),
+   env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,end_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?,?)')
+     .bind(id(),jobId,startMs,startMs+totals.worked_minutes*60000,rate.amount_cents,rate.id),
+   env.DB.prepare('INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)')
+     .bind(id(),user.id,'register_manual_hours','job',jobId,JSON.stringify({start_at:startMs,end_at:endMs,pause_minutes:totals.pause_minutes,worked_minutes:totals.worked_minutes,manual_override:manualOverride!==null,rate_cents:rate.amount_cents,amount_cents:totals.amount_cents}),at)
+  ]);
+  return json({ok:true,id:jobId,worked_minutes:totals.worked_minutes,amount_cents:totals.amount_cents},201);
+ }
  if(path==='/api/jobs'&&method==='POST'){
   const b=await bodyJson(request);const customer=requireString(b.customer,'Cliente',130);
   const location=text(b.location,240),description=text(b.description,1200);
@@ -204,8 +248,9 @@ async function handler(request,env){
   // Admin/gestor podem registrar obra operando pessoalmente, por meio do próprio usuário.
   const ownRole=operatorId===user.id&&user.role!=='operator';
   assert(op||ownRole,'Selecione um operador válido.');
-  const startMeter=nonNegative(b.start_meter,'Horímetro inicial');const fileId=requireString(b.start_file_id,'Foto do horímetro',60);
-  const f=await checkFile(env,fileId,user);assert(f.mime_type.startsWith('image/'),'A foto inicial precisa ser uma imagem.');
+  const startMeter=optionalMeter(b.start_meter,'Horímetro inicial');
+  const fileId=b.start_file_id?requireString(b.start_file_id,'Foto inicial',60):null;
+  if(fileId){const f=await checkFile(env,fileId,user);assert(f.mime_type.startsWith('image/'),'A foto inicial precisa ser uma imagem.');}
   const existing=await env.DB.prepare(`SELECT 1 FROM jobs WHERE status!='finished' LIMIT 1`).first();
   assert(!existing,'Já existe uma obra aberta. Pause, retome ou encerre antes de iniciar outra.',409);
   const rate=await firstRate(env);assert(rate,'Configure a tarifa antes de iniciar.',503);
@@ -237,8 +282,10 @@ async function handler(request,env){
   }
   if(action==='finish'){
    assert(job.status!=='finished','Obra já encerrada.',409);
-   const endMeter=nonNegative(b.end_meter,'Horímetro final');assert(endMeter>=job.start_meter,'Horímetro final não pode ser menor que o inicial.');
-   const fId=requireString(b.end_file_id,'Foto final',60);const f=await checkFile(env,fId,user);assert(f.mime_type.startsWith('image/'),'Foto final deve ser uma imagem.');
+   const endMeter=optionalMeter(b.end_meter,'Horímetro final');
+   assert(endMeter===null||job.start_meter===null||endMeter>=job.start_meter,'Horímetro final não pode ser menor que o inicial.');
+   const fId=b.end_file_id?requireString(b.end_file_id,'Foto final',60):null;
+   if(fId){const f=await checkFile(env,fId,user);assert(f.mime_type.startsWith('image/'),'Foto final deve ser uma imagem.');}
    await env.DB.batch([
     env.DB.prepare('UPDATE work_segments SET end_ts=? WHERE job_id=? AND end_ts IS NULL').bind(at,job.id),
     env.DB.prepare(`UPDATE jobs SET status='finished',end_meter=?,end_file_id=?,finished_at=?,updated_at=? WHERE id=?`).bind(endMeter,fId,at,at,job.id)
