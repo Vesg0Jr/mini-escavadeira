@@ -203,6 +203,7 @@ async function handler(request,env){
   return json({ok:true},200,{'Set-Cookie':`${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`});
  }
  if(path==='/api/state'&&method==='GET')return json(await state(env,user));
+ if(method==='POST'&&(path==='/api/jobs'||path==='/api/jobs/manual'))throw new HttpError('Use o novo fluxo com cliente e obra cadastrados no Calendário. O apontamento manual está em Operação.',409);
  const v3Response=await v3Route(request,env,user,at);
  if(v3Response)return v3Response;
  if(path==='/api/upload'&&method==='POST')return uploadFile(request,env,user);
