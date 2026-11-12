@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {webcrypto, createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {v3Route} from '../src/v3.js';
+import {STARTER_MACHINE_ID} from '../src/machines.js';
 
 globalThis.crypto ||= webcrypto;
 
@@ -14,7 +15,8 @@ function dbMock({client=null,active=null}={}){
     bind(...args){return {first: async()=>{
       if(sql.includes('FROM clients'))return client;
       if(sql.includes('FROM rates'))return {id:1,amount_cents:10000};
-      if(sql.includes("FROM jobs WHERE status"))return active;
+      if(sql.includes('FROM machines WHERE id='))return {id:STARTER_MACHINE_ID,name:'MINI ESCAVADEIRA 1.500 TONELADAS',status:'available'};
+      if(sql.includes('FROM jobs WHERE machine_id='))return active;
       return null;
     },all:async()=>({results:[]}),run:async()=>({success:true})}},
     first: async()=>null
@@ -31,7 +33,7 @@ async function run(payload,config={}){
  return {...m, response:await v3Route(request,{DB:m.db},user,Date.now())};
 }
 test('operador inicia obra imediatamente e cadastra cliente na mesma ação',async()=>{
- const {response,sqlLog}=await run({client_name:'Cliente Teste',client_phone:'(32) 98888-7777',client_service:'Escavação',title:'Obra rápida',start_timing:'now',mode:'timer'});
+ const {response,sqlLog}=await run({client_name:'Cliente Teste',client_phone:'(32) 98888-7777',client_service:'Escavação',title:'Obra rápida',start_timing:'now',mode:'digital',machine_ids:[STARTER_MACHINE_ID]});
  assert.equal(response.status,201);
  const json=await response.json();
  assert.equal(json.ok,true);assert.equal(json.scheduled,false);
@@ -39,21 +41,21 @@ test('operador inicia obra imediatamente e cadastra cliente na mesma ação',asy
 });
 test('operador escolhe cliente já cadastrado e inicia sem novo cadastro',async()=>{
  const client={id:'46b29c47-0460-4d35-891f-d9c27826e07c',name:'Cliente cadastrado',phone:'32999999999',service:'Terraplanagem'};
- const {response,sqlLog}=await run({client_id:client.id,title:'Escavação',start_timing:'now'},{client});
+ const {response,sqlLog}=await run({client_id:client.id,title:'Escavação',start_timing:'now',machine_ids:[STARTER_MACHINE_ID]},{client});
  assert.equal(response.status,201);
- assert.equal(sqlLog.length,4);
+ assert.equal(sqlLog.length,5);
 });
 test('operador pode programar uma obra futura sem ligar o motor',async()=>{
- const {response,sqlLog}=await run({client_name:'Cliente Programado',client_phone:'32999999999',client_service:'Escavação',title:'Obra agendada',start_timing:'scheduled',planned_start:'2099-01-15T08:00',planned_end:'2099-01-15T11:00',expected_hours:3});
+ const {response,sqlLog}=await run({client_name:'Cliente Programado',client_phone:'32999999999',client_service:'Escavação',title:'Obra agendada',start_timing:'scheduled',planned_start:'2099-01-15T08:00',planned_end:'2099-01-15T11:00',expected_hours:3,machine_ids:[STARTER_MACHINE_ID]});
  assert.equal(response.status,201);
  assert.equal((await response.json()).scheduled,true);
- assert.equal(sqlLog.length,3);
+ assert.equal(sqlLog.length,4);
 });
 test('telefone incompleto é rejeitado e nada é gravado',async()=>{
  await assert.rejects(run({client_name:'Teste',client_phone:'123',client_service:'Obra',title:'Obra'}),/Digite o telefone/);
 });
 test('não permite ligar a máquina com outra obra aberta',async()=>{
- await assert.rejects(run({client_name:'Teste',client_phone:'32999999999',client_service:'Obra',title:'Obra'},{active:{id:'busy'}}),/Já existe uma obra/);
+ await assert.rejects(run({client_name:'Teste',client_phone:'32999999999',client_service:'Obra',title:'Obra'machine_ids:[STARTER_MACHINE_ID]},{active:{id:'busy'}}),/já está em uma obra/);
 });
 test('PNGs oficiais da marca permanecem íntegros',()=>{
  const assets=[
