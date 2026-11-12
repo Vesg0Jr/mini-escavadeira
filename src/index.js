@@ -1,4 +1,5 @@
 import {segmentAmountCents,segmentDurationMs,maintenanceShares,summarizeJobs} from './math.js';
+import {hashPassword} from './password.js';
 
 const HOUR_MS = 3600000;
 const DAY_MS = 86400000;
@@ -18,11 +19,6 @@ const safeDate = () => new Date().toLocaleDateString('en-CA',{timeZone:'America/
 class HttpError extends Error {constructor(message,status=400){super(message);this.status=status;}}
 function assert(condition,msg,status=400){if(!condition)throw new HttpError(msg,status);}
 async function sha256(v){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))].map(x=>x.toString(16).padStart(2,'0')).join('');}
-async function hashPassword(password,salt) {
- const key = await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);
- const bytes = await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:250000,hash:'SHA-256'},key,256);
- return [...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,'0')).join('');
-}
 function sameOrigin(request){const origin=request.headers.get('Origin');if(origin && origin!==new URL(request.url).origin)throw new HttpError('Origem não autorizada.',403);}
 async function bodyJson(request){if(!request.headers.get('Content-Type')?.includes('application/json'))throw new HttpError('Envie JSON.');try{return await request.json();}catch{throw new HttpError('JSON inválido.');}}
 function validatePassword(p){assert(typeof p==='string'&&p.length>=10&&p.length<=128,'Senha deve ter de 10 a 128 caracteres.');return p;}
