@@ -164,7 +164,9 @@ export async function v3Route(request,env,user,at){
   const service=clean(b.service,200)||client.service;
   const location=clean(b.location,240),notes=clean(b.notes,700);
   const rows=intervals(b.rows,at),start=rows[0].start,end=rows.at(-1).end;
-  const conflict=await one(env.DB,"SELECT id FROM jobs WHERE deleted_at IS NULL AND started_at<? AND (finished_at IS NULL OR finished_at>?) LIMIT 1",end,start);
+  const [machine]=await selectedMachines(env,b.machine_id||b.machine_ids);
+  if(!machine)fail('Selecione uma máquina.');
+  const conflict=await one(env.DB,"SELECT id FROM jobs WHERE machine_id=? AND deleted_at IS NULL AND started_at<? AND (finished_at IS NULL OR finished_at>?) LIMIT 1",machine.id,end,start);
   if(conflict)fail('Já existe uma obra registrada no mesmo horário.',409);
   const images=b.photo_ids;
   if(!Array.isArray(images)||new Set(images).size<3||images.length<3||images.length>12)fail('Para encerrar, anexe pelo menos 3 fotos diferentes.');
@@ -181,8 +183,9 @@ export async function v3Route(request,env,user,at){
     .bind(clientId,client.name,client.phone,client.service,'Cadastrado durante lançamento manual',user.id,at,at));
   ops.push(env.DB.prepare("INSERT INTO work_orders(id,client_id,title,service,location,planned_start,planned_end,expected_minutes,hourly_cents,operator_id,status,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,'completed',?,?,?,?)")
    .bind(orderId,clientId,title,service,location,start,end,Math.round(minutes),segments[0].cents,user.id,notes,user.id,at,at));
-  ops.push(env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,end_meter,start_file_id,end_file_id,started_at,finished_at,created_by,updated_at,entry_mode,manual_pause_minutes,client_id,work_order_id,meter_mode,photo_requirement) VALUES(?,?,?,?,?,'finished',?,?,?,?,?,?,?,?,'manual',?,?,?,? ,1)")
-   .bind(jobId,client.name,location,service,user.id,initial,final,null,images[0],start,end,user.id,at,Math.round(pauseMinutes),clientId,orderId,'manual'));
+  ops.push(...orderMachineRows(env.DB,orderId,[machine],user.id,at));
+  ops.push(env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,end_meter,start_file_id,end_file_id,started_at,finished_at,created_by,updated_at,entry_mode,manual_pause_minutes,client_id,work_order_id,meter_mode,photo_requirement,machine_id) VALUES(?,?,?,?,?,'finished',?,?,?,?,?,?,?,?,'manual',?,?,?,? ,1,?)")
+   .bind(jobId,client.name,location,service,user.id,initial,final,null,images[0],start,end,user.id,at,Math.round(pauseMinutes),clientId,orderId,'manual',machine.id));
   for(const x of segments)ops.push(env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,end_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?,?)')
     .bind(uid(),jobId,x.start,x.end,x.cents,x.rate_id));
   for(const x of rows.filter(x=>x.kind==='pause'))ops.push(env.DB.prepare('INSERT INTO job_pauses(id,job_id,start_ts,end_ts,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?)')
@@ -235,16 +238,18 @@ export async function v3Route(request,env,user,at){
    if(!op)fail('Operador não encontrado.');
   }
   if(start<at-300000)fail('A data programada já passou. Escolha uma data futura.');
-  const conflict=await one(env.DB,"SELECT id FROM work_orders WHERE status='scheduled' AND planned_start<? AND planned_end>? LIMIT 1",end,start);
-  if(conflict&&b.allow_overlap!==true)fail('Já existe uma obra agendada nesse período. Ajuste o horário.',409);
+  const machines=await selectedMachines(env,b.machine_ids,{start,end});
   const tariff=await one(env.DB,'SELECT amount_cents FROM rates ORDER BY effective_at DESC,id DESC LIMIT 1');
   if(!tariff)fail('Tarifa não configurada.');
   const id=uid(),service=clean(b.service,200)||client.service;
   const title=requireText(b.title,'Nome da obra',130);
-  await env.DB.prepare("INSERT INTO work_orders(id,client_id,title,service,location,planned_start,planned_end,expected_minutes,hourly_cents,operator_id,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-    .bind(id,client.id,title,service,clean(b.location,240),start,end,minutes,tariff.amount_cents,assigned,clean(b.notes,700),user.id,at,at).run();
+  await env.DB.batch([
+   env.DB.prepare("INSERT INTO work_orders(id,client_id,title,service,location,planned_start,planned_end,expected_minutes,hourly_cents,operator_id,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .bind(id,client.id,title,service,clean(b.location,240),start,end,minutes,tariff.amount_cents,assigned,clean(b.notes,700),user.id,at,at),
+   ...orderMachineRows(env.DB,id,machines,user.id,at)
+  ]);
   await audit(env,user,'schedule','work_order',id,{client:client.name,start,end,expected_minutes:minutes,rate:tariff.amount_cents},at);
-  return json({ok:true,id,expected_cents:Math.round(minutes*tariff.amount_cents/60)},201);
+  return json({ok:true,id,expected_cents:Math.round(minutes*tariff.amount_cents*machines.length/60)},201);
  }
  const orderMatch=path.match(/^\/api\/v3\/orders\/([a-f0-9-]{36})$/);
  if(orderMatch&&(method==='PUT'||method==='DELETE')){
