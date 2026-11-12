@@ -55,7 +55,7 @@ test('telefone incompleto é rejeitado e nada é gravado',async()=>{
  await assert.rejects(run({client_name:'Teste',client_phone:'123',client_service:'Obra',title:'Obra'}),/Digite o telefone/);
 });
 test('não permite ligar a máquina com outra obra aberta',async()=>{
- await assert.rejects(run({client_name:'Teste',client_phone:'32999999999',client_service:'Obra',title:'Obra'machine_ids:[STARTER_MACHINE_ID]},{active:{id:'busy'}}),/já está em uma obra/);
+ await assert.rejects(run({client_name:'Teste',client_phone:'32999999999',client_service:'Obra',title:'Obra',machine_ids:[STARTER_MACHINE_ID]},{active:{id:'busy'}}),/já está em uma obra/);
 });
 test('PNGs oficiais da marca permanecem íntegros',()=>{
  const assets=[
