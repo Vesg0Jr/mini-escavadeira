@@ -120,8 +120,8 @@ function v3NoChoices(message){
  return '<div class="notice warn">'+esc(message)+'</div>';
 }
 function v3Clients(){
- if(state.data.me.role==='operator')return '<section class="panel"><h2>Clientes vinculados às obras</h2>'+
-  v3ClientsTable()+'</section>';
+ if(state.data.me.role==='operator')return '<section class="panel"><div class="panel-head"><h2>Clientes cadastrados</h2><button class="button primary sm" data-action="v3-client-form">+ Cadastrar cliente</button></div>'+
+  '<p class="muted small">O operador pode cadastrar clientes para começar imediatamente. Alterações e exclusões continuam restritas ao gestor e administrador.</p>'+v3ClientsTable()+'</section>';
  return '<section class="panel"><div class="panel-head"><h2>Clientes cadastrados</h2>'+
  '<button class="button primary sm" data-action="v3-client-form">+ Novo cliente</button></div>'+v3ClientsTable()+'</section>';
 }
