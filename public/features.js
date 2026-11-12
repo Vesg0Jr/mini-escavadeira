@@ -21,7 +21,7 @@ render=function(){
  if(!sidebar||!brand||!header)return;
  sidebar.classList.toggle('v3-collapsed',v3ui.sidebarCollapsed);
  sidebar.classList.toggle('v3-open',v3ui.mobileOpen);
- brand.innerHTML='<img class="v3-logo" src="/formacerta.webp" alt="FormaCerta" />'+
+ brand.innerHTML='<span class="v3-logo-frame"><img class="v3-logo" src="/formacerta.svg" alt="FormaCerta" /></span>'+
   '<button type="button" class="v3-side-toggle" data-action="v3-collapse" title="Recolher ou expandir menu" aria-label="Alternar barra lateral">☷</button>';
  const title=header.querySelector('h1');
  if(title)header.insertAdjacentHTML('afterbegin','<button type="button" class="v3-burger" data-action="v3-mobile-menu" aria-label="Abrir ou fechar menu">☰</button>');
@@ -427,3 +427,6 @@ dialog.addEventListener('change',e=>{
   const box=dialog.querySelector('.v3-review');if(box)box.hidden=!e.target.checked;
  }
 });
+
+// Fechar menu mobile depois de escolher uma aba.
+document.addEventListener('click',event=>{if(event.target.closest('[data-nav]'))v3ui.mobileOpen=false;},true);
