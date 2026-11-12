@@ -106,3 +106,18 @@ Os valores previstos de agenda são projeções, não pagamentos. A taxa do agen
 ### Verificações
 
 No GitHub, o workflow `Testes MiniGestao` roda testes de cálculo, derivação de senha, motor/pausas e sintaxe JavaScript a cada push. Para validar a implantação real, abra o Worker publicado, entre com seu usuário e faça uma obra de teste controlada, com três fotos, sem confundir com receitas reais. Não compartilhe senhas.
+
+## V5 — Frota de máquinas (novembro/2026)
+
+**Máquinas** é uma nova seção do painel. Só o administrador proprietário (primeiro administrador geral do sistema) pode cadastrar, editar, inativar ou excluir máquinas. Gestores e operadores visualizam a frota e podem selecionar equipamentos disponíveis nas obras.
+
+- Equipamento inicial: **MINI ESCAVADEIRA 1.500 TONELADAS**, código **MINI-01**, com foto da máquina enviada pelo usuário em formato WEBP otimizado e armazenada no R2; é possível substituir a foto original na edição.
+- Cadastro: nome, código, tipo, situação (disponível / em manutenção / inativa), leitura inicial opcional, foto JPG/PNG/WEBP e observações.
+- Uma obra pode ter **várias máquinas**; cada máquina tem sua própria contagem, pausas, fotos de encerramento e registro de horas. No início rápido, selecionar várias máquinas inicia uma jornada independente para cada uma; ao iniciar uma obra agendada é possível começar uma máquina de cada vez.
+- Uma máquina só pode ter **uma jornada aberta**. Agendamentos sobrepostos para a **mesma máquina** são recusados; outras máquinas podem trabalhar ao mesmo tempo.
+- A obra permanece **em andamento** enquanto houver alguma máquina vinculada sem jornada concluída; a conclusão depende da finalização de todas. A previsão financeira considera o número de máquinas selecionadas.
+- Ao excluir uma máquina, preservam-se históricos e vínculos antigos. A exclusão é bloqueada se há obra ativa ou agendada.
+- A migração `0005_machines.sql` vincula as obras já existentes à máquina MINI-01 e substitui o bloqueio global de uma única obra pelo bloqueio individual por máquina.
+- A foto inicial é armazenada privadamente em R2, servida por endpoint autenticado. Os anexos posteriores seguem o controle de acesso existente.
+
+Verificação: `npm test` inclui autorização de proprietário, conflito de máquina e isolamento de jornadas. Os testes sintáticos verificam `src/machines.js` e `public/fleet.js`.
