@@ -303,9 +303,12 @@ export async function v3Route(request,env,user,at){
  }
  if(path==='/api/v3/manual'&&method==='POST'){
   const b=await body(request),order=await assignedOrder(env,user,b.work_order_id);
-  if(order.status!=='scheduled')fail('Obra já iniciada, encerrada ou cancelada.',409);
+  if(!['scheduled','in_progress'].includes(order.status))fail('Esta obra está encerrada ou cancelada.',409);
+  const machine=await assignedMachine(env,order.id,b.machine_id);
+  const previous=await one(env.DB,'SELECT id FROM jobs WHERE work_order_id=? AND machine_id=? AND deleted_at IS NULL LIMIT 1',order.id,machine.id);
+  if(previous)fail('Máquina já registrada nesta obra.',409);
   const rows=intervals(b.rows,at),start=rows[0].start,end=rows.at(-1).end;
-  const conflict=await one(env.DB,"SELECT id FROM jobs WHERE deleted_at IS NULL AND started_at<? AND (finished_at IS NULL OR finished_at>?) LIMIT 1",end,start);
+  const conflict=await one(env.DB,"SELECT id FROM jobs WHERE machine_id=? AND deleted_at IS NULL AND started_at<? AND (finished_at IS NULL OR finished_at>?) LIMIT 1",machine.id,end,start);
   if(conflict)fail('Já há outra obra com horários sobrepostos.',409);
   const images=b.photo_ids;
   if(!Array.isArray(images)||new Set(images).size<3||images.length<3||images.length>12)fail('Anexe pelo menos 3 fotos diferentes para finalizar a obra.');
@@ -316,16 +319,17 @@ export async function v3Route(request,env,user,at){
   const cli=await one(env.DB,'SELECT * FROM clients WHERE id=?',order.client_id);
   const owner=user.role==='operator'?user.id:order.operator_id||user.id,id=uid();
   const inputs=[
-   env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,end_meter,start_file_id,end_file_id,started_at,finished_at,created_by,updated_at,entry_mode,manual_pause_minutes,client_id,work_order_id,meter_mode,photo_requirement) VALUES(?,?,?,?,?,'finished',?,?,?,?,?,?,?,?, 'manual',?,?,?,?,1)")
+   env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,end_meter,start_file_id,end_file_id,started_at,finished_at,created_by,updated_at,entry_mode,manual_pause_minutes,client_id,work_order_id,meter_mode,photo_requirement,machine_id) VALUES(?,?,?,?,?,'finished',?,?,?,?,?,?,?,?, 'manual',?,?,?,?,1,?)")
    .bind(id,cli.name,order.location,order.service,owner,initial,final,null,images[0],start,end,user.id,at,
-     rows.filter(r=>r.kind==='pause').reduce((sum,r)=>sum+(r.end-r.start)/60000,0),cli.id,order.id,'manual'),
-   env.DB.prepare("UPDATE work_orders SET status='completed',updated_at=? WHERE id=?").bind(at,order.id)
+     rows.filter(r=>r.kind==='pause').reduce((sum,r)=>sum+(r.end-r.start)/60000,0),cli.id,order.id,'manual',machine.id),
+   env.DB.prepare("UPDATE work_orders SET status='in_progress',updated_at=? WHERE id=?").bind(at,order.id)
   ];
   for(const seg of segs)inputs.push(env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,end_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?,?)').bind(uid(),id,seg.start,seg.end,seg.cents,seg.rate_id));
   for(const pause of rows.filter(r=>r.kind==='pause'))inputs.push(env.DB.prepare('INSERT INTO job_pauses(id,job_id,start_ts,end_ts,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?)')
     .bind(uid(),id,pause.start,pause.end,pause.reason,user.id,at));
   for(const img of images)inputs.push(env.DB.prepare("INSERT INTO job_photos(id,job_id,file_id,phase,created_by,created_at) VALUES(?,?,?,'finish',?,?)").bind(uid(),id,img,user.id,at));
   await env.DB.batch(inputs);
+  await updateOrderStatus(env,order.id,at);
   const minutes=segs.reduce((sum,r)=>sum+(r.end-r.start)/60000,0),amount=Math.round(segs.reduce((sum,r)=>sum+(r.end-r.start)*r.cents/3600000,0));
   await audit(env,user,'manual_timeline','job',id,{order_id:order.id,minutes,pause_minutes:(end-start)/60000-minutes,amount_cents:amount},at);
   return json({ok:true,id,worked_minutes:minutes,amount_cents:amount},201);
