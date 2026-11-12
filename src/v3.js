@@ -277,9 +277,10 @@ export async function v3Route(request,env,user,at){
  }
  if(path==='/api/v3/start'&&method==='POST'){
   const b=await body(request),order=await assignedOrder(env,user,b.work_order_id);
-  if(order.status!=='scheduled')fail('Esta obra não está disponível para iniciar.',409);
-  const existing=await one(env.DB,"SELECT id FROM jobs WHERE status!='finished' AND deleted_at IS NULL LIMIT 1");
-  if(existing)fail('Há uma máquina em operação. Encerre a obra anterior primeiro.',409);
+  if(!['scheduled','in_progress'].includes(order.status))fail('Esta obra não está disponível para iniciar.',409);
+  const machine=await assignedMachine(env,order.id,b.machine_id);
+  const existing=await one(env.DB,"SELECT id FROM jobs WHERE work_order_id=? AND machine_id=? AND deleted_at IS NULL LIMIT 1",order.id,machine.id);
+  if(existing)fail('Esta máquina já teve sua jornada registrada nesta obra.',409);
   const client=await one(env.DB,'SELECT * FROM clients WHERE id=?',order.client_id);
   const owner=user.role==='operator'?user.id:order.operator_id||user.id;
   if(user.role==='operator'&&order.operator_id&&order.operator_id!==user.id)fail('Obra de outro operador.',403);
@@ -291,13 +292,13 @@ export async function v3Route(request,env,user,at){
   if(!tariff)fail('Tarifa não encontrada.',503);
   const id=uid();
   await env.DB.batch([
-   env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,start_file_id,started_at,created_by,updated_at,client_id,work_order_id,meter_mode,photo_requirement) VALUES(?,?,?,?,?,'running',?,?,?,?,?,?,?,?,1)")
-     .bind(id,client.name,order.location,order.service,owner,initial,photo,at,user.id,at,client.id,order.id,mode),
+   env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,start_file_id,started_at,created_by,updated_at,client_id,work_order_id,meter_mode,photo_requirement,machine_id) VALUES(?,?,?,?,?,'running',?,?,?,?,?,?,?,?,1,?)")
+     .bind(id,client.name,order.location,order.service,owner,initial,photo,at,user.id,at,client.id,order.id,mode,machine.id),
    env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?)').bind(uid(),id,at,tariff.amount_cents,tariff.id),
    env.DB.prepare("UPDATE work_orders SET status='in_progress',updated_at=? WHERE id=?").bind(at,order.id)
   ]);
   if(photo)await env.DB.prepare("INSERT INTO job_photos(id,job_id,file_id,phase,created_by,created_at) VALUES(?,?,?,'start',?,?)").bind(uid(),id,photo,user.id,at).run();
-  await audit(env,user,'start','job',id,{order_id:order.id,mode},at);
+  await audit(env,user,'start','job',id,{order_id:order.id,machine_id:machine.id,mode},at);
   return json({ok:true,id},201);
  }
  if(path==='/api/v3/manual'&&method==='POST'){
