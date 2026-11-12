@@ -213,7 +213,7 @@ function v3Jobs(){
  '<h3 style="margin-top:18px">Obras programadas ('+orders.length+')</h3>'+v3OrdersTable(orders)+'</section>'+
  '<section class="panel"><div class="panel-head"><h2>Obras registradas ('+jobs.length+')</h2><button class="button light sm" data-action="v3-manual-form">+ Lançar motor e pausas</button></div>'+
  (jobs.length?'<div class="tblwrap"><table><thead><tr><th>Cliente / Obra</th><th>Início</th><th>Horas</th><th>Valor</th><th>Situação</th><th>Ações</th></tr></thead><tbody>'+
- jobs.map(j=>'<tr><td><strong>'+esc(j.customer)+'</strong><br><span class="muted small">'+esc(j.description)+'</span></td><td>'+datePt(j.started_at)+
+ jobs.map(j=>'<tr><td><strong>'+esc(j.customer)+'</strong><br><span class="muted small">'+esc(j.description)+(j.machine_id?' · '+esc((state.data.machines||[]).find(m=>m.id===j.machine_id)?.name||'Máquina'):'')+'</span></td><td>'+datePt(j.started_at)+
  '</td><td>'+hrs(currentDuration(j))+'</td><td>'+money(currentAmount(j))+'</td><td>'+badge(j.status)+'</td><td><div class="row-actions">'+
  '<button class="button light sm" data-action="job-details" data-id="'+j.id+'">Detalhes</button>'+
  (admin?(j.status==='finished'?'<button class="button light sm" data-action="v3-job-reopen" data-id="'+j.id+'">Retomar</button>':'')+
