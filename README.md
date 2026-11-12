@@ -83,3 +83,26 @@ Na aba **Operação** ou **Obras**, escolha **Registrar horas manualmente**. Pre
 Registros manuais são encerrados imediatamente, sem iniciar cronômetro. O sistema rejeita horários sobrepostos a obras já cadastradas para evitar duplicidade. Os campos de horímetro e foto podem ficar vazios. Horários são interpretados como horário de Brasília (UTC-3); a cobrança usa a tarifa que estava vigente no início da obra.
 
 Para obras controladas pelo cronômetro, continuam disponíveis início, desligamento, retomada e encerramento. Quem precisar fazer uma correção de horas em obra antiga pode utilizar **Obras → Detalhes → Corrigir horas**, somente como administrador, com justificativa registrada.
+
+## Novidades V3: FormaCerta, clientes, agenda e jornada completa
+
+- **Login:** o acesso habitual pede apenas usuário e senha. Nome é cadastro administrativo, não campo do login.
+- **Clientes:** nome, telefone com DDD, serviço e observações. Gestor e administrador cadastram/alteram.
+- **Obras agendadas:** associadas a um cliente, com título, serviço, local, data/hora inicial e final, operador e previsão de horas. O calendário mensal tem dias clicáveis.
+- **Iniciar obra:** selecionar primeiro o cliente e depois uma obra cadastrada; escolher operação imediata (motor agora/horímetro digital) ou programação.
+- **Apontamento manual:** informar períodos de motor ligado, pausas de minutos ou horários de início/fim e justificativas. Permite duas pausas consecutivas por motivos distintos. Somente períodos ligados são cobrados.
+- **Conferência digital:** início/fim do horímetro opcionais. No encerramento digital, é possível registrar os períodos manuais apenas como conferência, sem duplicar cobrança.
+- **Fotos finais:** a conclusão de qualquer obra pelo novo fluxo exige ao menos 3 fotos distintas da obra (privadas no R2). A foto inicial é opcional.
+- **Chamados:** operador registra esquecimento de leitura, divergências ou pausas; gestor/admin podem resolver com comentário.
+- **Administrador geral:** pode retomar obra encerrada (retorna pausada, para não contar horas automaticamente) e excluir obra de forma lógica, com justificativa e auditoria.
+- **Dashboard:** seletor de qualquer dia (inclusive datas passadas), comparativo de horas e faturamento do dia, agenda e previsões de horas e valores agendados.
+- **Layout:** marca FormaCerta na navegação, menu hambúrguer no celular e recolhimento da lateral no computador.
+- **Histórico e proteção:** valores da hora preservam histórico; os lançamentos novos precisam ter cliente e obra cadastrados.
+
+### Cuidados para o gestor
+
+Os valores previstos de agenda são projeções, não pagamentos. A taxa do agendamento usa o valor vigente na criação da previsão. Quando houver execução real, a cobrança usa segmentos efetivamente trabalhados com a tarifa histórica. Fotos/horímetro não substituem a validação dos tempos. O banco mantém o histórico anterior a V3.
+
+### Verificações
+
+No GitHub, o workflow `Testes MiniGestao` roda testes de cálculo, derivação de senha, motor/pausas e sintaxe JavaScript a cada push. Para validar a implantação real, abra o Worker publicado, entre com seu usuário e faça uma obra de teste controlada, com três fotos, sem confundir com receitas reais. Não compartilhe senhas.
