@@ -97,3 +97,149 @@
 
 /* Ocultar controles do cronômetro ao escolher apontamento manual. */
 .v3-only-digital[hidden]{display:none!important}
+
+
+/* V3.1 - Barra compacta harmonizada: sem sobreposições em desktop. */
+@media (min-width:741px) {
+ .sidebar {
+   min-width:0;
+   overflow:hidden;
+ }
+ .sidebar .nav {
+   flex:1 1 auto;
+   min-height:0;
+   overflow-y:auto;
+   overflow-x:hidden;
+   scrollbar-width:none;
+ }
+ .sidebar .nav::-webkit-scrollbar {display:none}
+ .sidebar .brand {flex:0 0 auto}
+ .sidebar .sidebar-bottom {flex:0 0 auto}
+ .sidebar.v3-collapsed {
+   width:76px;
+   min-width:76px;
+   padding:18px 10px 14px;
+   align-items:stretch;
+   overflow:hidden;
+ }
+ .sidebar.v3-collapsed .brand {
+   display:flex;
+   flex-direction:column;
+   align-items:center;
+   justify-content:flex-start;
+   gap:8px;
+   margin:0;
+   padding:0 0 15px;
+   min-height:0;
+   width:100%;
+   overflow:visible;
+ }
+ .sidebar.v3-collapsed .v3-logo-frame {
+   width:40px;
+   min-width:40px;
+   max-width:40px;
+   height:40px;
+   min-height:40px;
+   flex:0 0 40px;
+   display:block;
+   border-radius:10px;
+   overflow:hidden;
+ }
+ .sidebar.v3-collapsed .v3-logo {
+   display:block;
+   width:303px;
+   min-width:303px;
+   max-width:none;
+   height:40px;
+   min-height:40px;
+   max-height:40px;
+   object-fit:fill;
+   object-position:left center;
+ }
+ .sidebar.v3-collapsed .v3-side-toggle {
+   display:grid;
+   place-items:center;
+   width:34px;
+   min-width:34px;
+   max-width:34px;
+   height:32px;
+   min-height:32px;
+   padding:0;
+   flex:0 0 32px;
+   border-radius:9px;
+   font-size:22px;
+   line-height:1;
+ }
+ .sidebar.v3-collapsed .nav {
+   display:flex;
+   flex-direction:column;
+   align-items:stretch;
+   gap:5px;
+   padding:0;
+   margin:0;
+ }
+ .sidebar.v3-collapsed .nav button {
+   position:relative;
+   display:flex;
+   flex:0 0 auto;
+   align-items:center;
+   justify-content:center;
+   width:100%;
+   min-width:0;
+   min-height:46px;
+   height:46px;
+   padding:0;
+   gap:0;
+   border-radius:12px;
+   white-space:nowrap;
+   overflow:hidden;
+   font-size:0;
+ }
+ .sidebar.v3-collapsed .nav button span {
+   font-size:21px!important;
+   line-height:1;
+   flex:0 0 auto;
+ }
+ .sidebar.v3-collapsed .nav button.active::before {
+   position:absolute;
+   top:50%;
+   left:3px;
+   transform:translateY(-50%);
+   margin:0;
+   width:3px;
+   height:20px;
+ }
+ .sidebar.v3-collapsed .sidebar-bottom {
+   margin-top:auto;
+   padding:10px 0 0;
+   border-top:1px solid #2a3c4e;
+   text-align:center;
+   font-size:0;
+   line-height:0;
+   overflow:hidden;
+ }
+ .sidebar.v3-collapsed .sidebar-bottom > strong,
+ .sidebar.v3-collapsed .sidebar-bottom > br {display:none}
+ .sidebar.v3-collapsed .sidebar-bottom button {
+   display:grid;
+   place-items:center;
+   width:42px;
+   min-width:42px;
+   max-width:42px;
+   height:42px;
+   min-height:42px;
+   margin:0 auto;
+   padding:0;
+   border-radius:11px;
+   font-size:0;
+   line-height:1;
+   overflow:hidden;
+   white-space:nowrap;
+ }
+ .sidebar.v3-collapsed .sidebar-bottom button::before {
+   content:"⇥";
+   color:#e8f1fa;
+   font-size:23px;
+   line-height:1;
+ }
+}
