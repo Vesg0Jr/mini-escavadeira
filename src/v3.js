@@ -87,8 +87,65 @@ export function splitRates(intervals,history){
 }
 export async function v3Route(request,env,user,at){
  const path=new URL(request.url).pathname,method=request.method;
+ if(path==='/api/v3/quick-start'&&method==='POST'){
+  // Um único envio: o operador pode cadastrar o cliente e iniciar sem agenda prévia.
+  const b=await body(request);
+  const scheduled=b.start_timing==='scheduled';
+  const now=b.start_timing==='now'||b.start_timing===undefined||b.start_timing==='';
+  if(!scheduled&&!now)fail('Selecione iniciar agora ou programar.',400);
+  let client=null,clientId=b.client_id||null,addClient=false;
+  if(clientId){
+   client=await one(env.DB,'SELECT * FROM clients WHERE id=? AND deleted_at IS NULL',idIn(clientId));
+   if(!client)fail('Cliente não encontrado.',404);
+  }else{
+   const name=requireText(b.client_name,'Nome do cliente',130),
+     phone=requireText(b.client_phone,'Telefone',30),
+     service=requireText(b.client_service,'Serviço do cliente',200);
+   if(phone.replace(/\\D/g,'').length<10)fail('Digite o telefone com DDD.',400);
+   clientId=uid();addClient=true;
+   client={id:clientId,name,phone,service};
+  }
+  const title=requireText(b.title,'Nome da obra',130),
+    service=clean(b.service,200)||client.service,
+    location=clean(b.location,240),notes=clean(b.notes,700);
+  const hourly=await one(env.DB,'SELECT * FROM rates ORDER BY effective_at DESC,id DESC LIMIT 1');
+  if(!hourly)fail('Configure o valor da hora antes de iniciar.',503);
+  const mode=b.mode==='digital'?'digital':'timer',initial=meter(b.start_meter);
+  const picture=b.start_file_id?idIn(b.start_file_id):null;
+  if(picture)await ownedFile(env,user,picture);
+  let start=at,end=at+3600000,minutes=60;
+  if(scheduled){
+   start=goodDate(b.planned_start,'Início programado');
+   end=goodDate(b.planned_end,'Fim programado');
+   minutes=b.expected_hours!==undefined&&String(b.expected_hours).trim()!==''?Math.round(Number(b.expected_hours)*60):Math.round((end-start)/60000);
+   if(start<at-300000||end<=start||end-start>72*3600000||!Number.isInteger(minutes)||minutes<1||minutes>4320)fail('Confira a data de agendamento e as horas previstas.');
+   const collision=await one(env.DB,"SELECT id FROM work_orders WHERE status='scheduled' AND planned_start<? AND planned_end>? LIMIT 1",end,start);
+   if(collision)fail('Já existe uma obra agendada nesse horário.',409);
+  }else{
+   const active=await one(env.DB,"SELECT id FROM jobs WHERE status!='finished' AND deleted_at IS NULL LIMIT 1");
+   if(active)fail('Já existe uma obra em execução. Encerre antes de iniciar outra.',409);
+  }
+  const orderId=uid(),jobId=uid(),operatorId=user.id;
+  const operations=[];
+  if(addClient)operations.push(env.DB.prepare('INSERT INTO clients(id,name,phone,service,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
+    .bind(client.id,client.name,client.phone,client.service,'Cadastrado durante início rápido',user.id,at,at));
+  operations.push(env.DB.prepare("INSERT INTO work_orders(id,client_id,title,service,location,planned_start,planned_end,expected_minutes,hourly_cents,operator_id,status,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,? ,?,?,?,?,?)")
+   .bind(orderId,clientId,title,service,location,start,end,minutes,hourly.amount_cents,operatorId,scheduled?'scheduled':'in_progress',notes,user.id,at,at));
+  if(!scheduled){
+   operations.push(env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,start_file_id,started_at,created_by,updated_at,client_id,work_order_id,meter_mode,photo_requirement) VALUES(?,?,?,?,?,'running',?,?,?,?,?,?,?,?,1)")
+     .bind(jobId,client.name,location,service,operatorId,initial,picture,at,user.id,at,clientId,orderId,mode));
+   operations.push(env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?)')
+     .bind(uid(),jobId,at,hourly.amount_cents,hourly.id));
+   if(picture)operations.push(env.DB.prepare("INSERT INTO job_photos(id,job_id,file_id,phase,created_by,created_at) VALUES(?,?,?,'start',?,?)")
+     .bind(uid(),jobId,picture,user.id,at));
+  }
+  operations.push(env.DB.prepare('INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)')
+    .bind(uid(),user.id,scheduled?'quick_schedule':'quick_start','work_order',orderId,JSON.stringify({client_id:clientId,client_created:addClient,job_id:scheduled?null:jobId}),at));
+  await env.DB.batch(operations);
+  return json({ok:true,client_id:clientId,work_order_id:orderId,job_id:scheduled?null:jobId,scheduled},201);
+ }
  if(path==='/api/v3/clients'&&method==='POST'){
-  roles(user,'admin','manager');const b=await body(request);
+  roles(user,'admin','manager','operator');const b=await body(request);
   const name=requireText(b.name,'Nome do cliente',130),phone=requireText(b.phone,'Telefone',30),service=requireText(b.service,'Serviço',200);
   if(phone.replace(/\D/g,'').length<10)fail('Telefone precisa ter DDD e número.');
   const id=uid();await env.DB.prepare('INSERT INTO clients(id,name,phone,service,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
