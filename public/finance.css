@@ -1,0 +1,10 @@
+/* Acerto financeiro: status claros e conferência com comprovante. */
+.finance-status{display:inline-block;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:780;white-space:nowrap}
+.finance-status.pending{background:#fff4de;color:#98611b}
+.finance-status.approved{background:#e2f7ec;color:#157c4d}
+.finance-status.rejected{background:#ffebeb;color:#ae3434}
+.finance-review-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:15px;border-radius:12px;border:1px solid #e0e8ef;margin:14px 0}
+.finance-review-details div{display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere}
+.finance-review-details small{font-size:12px;color:#75869a;font-weight:600}
+.finance-review-details strong{color:#192c40;font-size:15px}
+@media(max-width:640px){.finance-review-details{grid-template-columns:minmax(0,1fr)}}
