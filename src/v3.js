@@ -209,6 +209,37 @@ export async function v3Route(request,env,user,at){
   await audit(env,user,'manual_timeline','job',id,{order_id:order.id,minutes,pause_minutes:(end-start)/60000-minutes,amount_cents:amount},at);
   return json({ok:true,id,worked_minutes:minutes,amount_cents:amount},201);
  }
+ const motor=path.match(/^\/api\/v3\/jobs\/([a-f0-9-]{36})\/(pause|resume)$/);
+ if(motor&&method==='POST'){
+  const job=await linkedJob(env,user,motor[1]),action=motor[2];
+  if(action==='pause'){
+   if(job.status!=='running')fail('O motor já está desligado.',409);
+   const b=await body(request),reason=requireText(b.reason,'Motivo da pausa',350);
+   await env.DB.batch([
+    env.DB.prepare('UPDATE work_segments SET end_ts=? WHERE job_id=? AND end_ts IS NULL').bind(at,job.id),
+    env.DB.prepare("UPDATE jobs SET status='paused',updated_at=? WHERE id=?").bind(at,job.id),
+    env.DB.prepare('INSERT INTO job_checks(id,job_id,detail_json,created_by,created_at) VALUES(?,?,?,?,?)').bind(uid(),job.id,JSON.stringify({kind:'pause',reason,start_ts:at}),user.id,at)
+   ]);
+   await audit(env,user,'pause','job',job.id,{reason},at);
+   return json({ok:true});
+  }
+  if(job.status!=='paused')fail('O motor precisa estar desligado para retomar.',409);
+  const last=await one(env.DB,"SELECT * FROM job_checks WHERE job_id=? AND detail_json LIKE '%\"kind\":\"pause\"%' ORDER BY created_at DESC LIMIT 1",job.id);
+  const lastPeriod=await one(env.DB,'SELECT end_ts FROM work_segments WHERE job_id=? AND end_ts IS NOT NULL ORDER BY end_ts DESC LIMIT 1',job.id);
+  let reason='Pausa operacional';
+  if(last){try{reason=JSON.parse(last.detail_json)?.reason||reason}catch{}}
+  const start=lastPeriod?.end_ts||at;
+  const rate=await one(env.DB,'SELECT * FROM rates ORDER BY effective_at DESC,id DESC LIMIT 1');
+  const queries=[
+   env.DB.prepare("UPDATE jobs SET status='running',updated_at=? WHERE id=?").bind(at,job.id),
+   env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?)').bind(uid(),job.id,at,rate.amount_cents,rate.id)
+  ];
+  if(at>start)queries.push(env.DB.prepare('INSERT INTO job_pauses(id,job_id,start_ts,end_ts,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?)')
+    .bind(uid(),job.id,start,at,reason,user.id,at));
+  await env.DB.batch(queries);
+  await audit(env,user,'resume','job',job.id,{pause_minutes:Math.round((at-start)/60000)},at);
+  return json({ok:true});
+ }
  const finish=path.match(/^\/api\/v3\/jobs\/([a-f0-9-]{36})\/finish$/);
  if(finish&&method==='POST'){
   const job=await linkedJob(env,user,finish[1]),b=await body(request);
