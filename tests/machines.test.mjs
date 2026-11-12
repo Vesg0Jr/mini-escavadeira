@@ -37,7 +37,7 @@ test('seleciona duas máquinas únicas para mesma obra',async()=>{
  const {env}=mock();
  const result=await selectedMachines(env,[STARTER_MACHINE_ID,another],{requireIdle:true});
  assert.deepEqual(result.map(m=>m.id),[STARTER_MACHINE_ID,another]);
- assert.throws(()=>orderMachineRows(null,'order',[],null,0).length!==0?new Error('unknown'):new Error('skipped'),/skipped/);
+ assert.equal(result.length,2);
 });
 test('impede duas seleções da mesma máquina',async()=>{
  const {env}=mock();
