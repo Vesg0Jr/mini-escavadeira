@@ -22,8 +22,8 @@ test('mensagens de falha são adequadas a usuários',()=>{
 });
 
 test('recuperação continua permitindo código e nova senha',()=>{
- assert.match(features,/'recovery_code'/);
- assert.match(features,/'new_password'/);
+ assert.match(features,/name="recovery_code"/);
+ assert.match(features,/name="new_password"/);
  assert.match(features,/\/recover-password/);
  assert.doesNotMatch(features,/name="username" value="admin\.geral"/);
 });
