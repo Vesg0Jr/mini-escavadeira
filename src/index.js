@@ -2,7 +2,8 @@ import {segmentAmountCents,segmentDurationMs,maintenanceShares,summarizeJobs} fr
 import {hashPassword} from './password.js';
 import {manualTotals} from './manual.js';
 import {v3State,v3Route} from './v3.js';
-import {machineRoutes,machineState} from './machines.js';
+import {machineRoutes,machineState,isFleetOwner} from './machines.js';
+import {settlementTotals} from './settlement.js';
 
 const HOUR_MS = 3600000;
 const DAY_MS = 86400000;
@@ -111,10 +112,12 @@ async function state(env,user){
  const shares=maintenanceShares(maintenance);
  const totalCents=jobs.reduce((s,j)=>s+j.amount_cents,0);
  const totalMs=jobs.reduce((s,j)=>s+j.duration_ms,0);
- const paidCents=payments.reduce((s,p)=>s+p.amount_cents,0);
- const paidMinutes=payments.reduce((s,p)=>s+p.paid_minutes,0);
- const summary={total_ms:totalMs,earned_cents:totalCents,received_cents:paidCents,remaining_cents:totalCents-paidCents,paid_minutes:paidMinutes,unpaid_minutes:Math.max(0,Math.round(totalMs/60000)-paidMinutes),jobs_finished:jobs.filter(j=>j.status==='finished').length,maintenance:shares};
- const extras={maintenance,payments,users,summary};
+ const approved=payments.filter(p=>p.status==='approved');
+ const paidCents=approved.reduce((s,p)=>s+p.amount_cents,0);
+ const paidMinutes=approved.reduce((s,p)=>s+p.paid_minutes,0);
+ const settlement=settlementTotals(jobs,maintenance,payments);
+ const summary={total_ms:totalMs,earned_cents:totalCents,received_cents:paidCents,remaining_cents:settlement.balance_cents,paid_minutes:paidMinutes,unpaid_minutes:Math.max(0,Math.round(totalMs/60000)-paidMinutes),jobs_finished:jobs.filter(j=>j.status==='finished').length,maintenance:shares,settlement};
+ const extras={maintenance,payments:user.role==='manager'?payments.filter(p=>p.created_by===user.id||p.status==='approved'):payments,users,summary,can_approve_payments:await isFleetOwner(env,user)};
  if(user.role==='admin')extras.audit=await fetchAll(env.DB,`SELECT a.*,u.name actor_name FROM audit_log a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100`);
  return machineState(env,user,await v3State(env,user,{...base,...extras}));
 }
@@ -416,25 +419,69 @@ async function handler(request,env){
   await log(env,user,'update','maintenance',maintPath[1],{before:existing,after:b});return json({ok:true});
  }
  if(path==='/api/payments'&&method==='POST'){
-  requireRole(user,'admin','manager');const b=await bodyJson(request);const cents=amountCents(b.amount),minutes=Number(b.paid_minutes||0),date=dateValue(b.payment_date);
-  assert(Number.isInteger(minutes)&&minutes>=0&&minutes<1e8,'Horas pagas inválidas.');
-  if(b.file_id)await checkFile(env,b.file_id,user);
-  const pid=id();await env.DB.prepare('INSERT INTO payments(id,amount_cents,paid_minutes,payment_date,file_id,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)')
-    .bind(pid,cents,minutes,date,b.file_id||null,text(b.notes,700),user.id,at,at).run();
-  await log(env,user,'create','payment',pid,{amount_cents:cents,paid_minutes:minutes});return json({ok:true,id:pid},201);
+  requireRole(user,'admin','manager');
+  if(user.role==='admin')assert(await isFleetOwner(env,user),'Somente o proprietário pode confirmar pagamentos.',403);
+  const b=await bodyJson(request),cents=amountCents(b.amount),minutes=Number(b.paid_minutes||0),date=dateValue(b.payment_date);
+  assert(Number.isInteger(minutes)&&minutes>=0&&minutes<1e8,'Horas informadas inválidas.');
+  const fileId=b.file_id||null;
+  if(user.role==='manager')assert(fileId,'O comprovante é obrigatório para enviar um pagamento.');
+  if(fileId){
+   const file=await checkFile(env,fileId,user);
+   assert(file.mime_type.startsWith('image/')||file.mime_type==='application/pdf','Anexe uma imagem ou PDF.',400);
+   if(user.role==='manager')assert(file.uploaded_by===user.id,'Envie seu próprio comprovante.',403);
+  }
+  const pid=id(),approved=user.role==='admin',status=approved?'approved':'pending';
+  await env.DB.batch([
+   env.DB.prepare('INSERT INTO payments(id,amount_cents,paid_minutes,payment_date,file_id,notes,created_by,created_at,updated_at,status,reviewed_by,reviewed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(pid,cents,minutes,date,fileId,text(b.notes,700),user.id,at,at,status,approved?user.id:null,approved?at:null),
+   env.DB.prepare('INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)')
+    .bind(id(),user.id,'submit_payment','payment',pid,JSON.stringify({amount_cents:cents,status,has_receipt:!!fileId}),at)
+  ]);
+  return json({ok:true,id:pid,status},201);
+ }
+ const payReview=path.match(/^\/api\/payments\/([a-f0-9-]{36})\/(approve|reject)$/);
+ if(payReview&&method==='POST'){
+  requireRole(user,'admin');
+  assert(await isFleetOwner(env,user),'Somente o administrador proprietário pode conferir os pagamentos.',403);
+  const existing=await env.DB.prepare('SELECT * FROM payments WHERE id=? AND deleted_at IS NULL').bind(payReview[1]).first();
+  assert(existing,'Pagamento não encontrado.',404);
+  assert(existing.status==='pending','Este pagamento já foi conferido.',409);
+  assert(existing.file_id,'Este pagamento está sem comprovante e não pode ser aprovado.',400);
+  const action=payReview[2],b=await bodyJson(request),reason=text(b.reason,500);
+  if(action==='reject')assert(reason,'Informe o motivo da recusa.');
+  const status=action==='approve'?'approved':'rejected';
+  const result=await env.DB.prepare("UPDATE payments SET status=?,reviewed_by=?,reviewed_at=?,review_notes=?,updated_at=? WHERE id=? AND status='pending' AND deleted_at IS NULL")
+   .bind(status,user.id,at,reason,at,existing.id).run();
+  assert(result.meta.changes===1,'Este pagamento já foi conferido.',409);
+  await log(env,user,action+'_payment','payment',existing.id,{amount_cents:existing.amount_cents,reason});
+  return json({ok:true,status});
  }
  const payPath=path.match(/^\/api\/payments\/([a-f0-9-]{36})$/);
  if(payPath&&(method==='PUT'||method==='DELETE')){
-  requireRole(user,'admin','manager');const existing=await env.DB.prepare('SELECT * FROM payments WHERE id=? AND deleted_at IS NULL').bind(payPath[1]).first();assert(existing,'Pagamento não encontrado.',404);
+  requireRole(user,'admin','manager');
+  const existing=await env.DB.prepare('SELECT * FROM payments WHERE id=? AND deleted_at IS NULL').bind(payPath[1]).first();
+  assert(existing,'Pagamento não encontrado.',404);
   if(method==='DELETE'){
-   requireRole(user,'admin');await env.DB.prepare('UPDATE payments SET deleted_at=?,updated_at=? WHERE id=?').bind(at,at,payPath[1]).run();
-   await log(env,user,'delete','payment',payPath[1],{prior:existing});return json({ok:true});
+   requireRole(user,'admin');
+   assert(await isFleetOwner(env,user),'Somente o administrador proprietário pode excluir pagamentos.',403);
+   await env.DB.prepare('UPDATE payments SET deleted_at=?,updated_at=? WHERE id=? AND deleted_at IS NULL').bind(at,at,payPath[1]).run();
+   await log(env,user,'delete','payment',payPath[1],{prior:existing});
+   return json({ok:true});
   }
-  const b=await bodyJson(request);const cents=amountCents(b.amount),minutes=Number(b.paid_minutes||0),date=dateValue(b.payment_date);
-  assert(Number.isInteger(minutes)&&minutes>=0&&minutes<1e8,'Horas pagas inválidas.');if(b.file_id)await checkFile(env,b.file_id,user);
-  await env.DB.prepare('UPDATE payments SET amount_cents=?,paid_minutes=?,payment_date=?,file_id=?,notes=?,updated_at=? WHERE id=?')
-   .bind(cents,minutes,date,b.file_id||null,text(b.notes,700),at,payPath[1]).run();
-  await log(env,user,'update','payment',payPath[1],{before:existing,after:b});return json({ok:true});
+  assert(existing.status==='pending','Pagamentos já conferidos não podem ser editados. Faça um novo lançamento.',409);
+  assert(existing.created_by===user.id,'Somente quem enviou pode corrigir o pagamento pendente.',403);
+  const b=await bodyJson(request),cents=amountCents(b.amount),minutes=Number(b.paid_minutes||0),date=dateValue(b.payment_date);
+  assert(Number.isInteger(minutes)&&minutes>=0&&minutes<1e8,'Horas informadas inválidas.');
+  const fileId=b.file_id||existing.file_id;
+  assert(fileId,'Comprovante obrigatório.');
+  const file=await checkFile(env,fileId,user);
+  assert(file.mime_type.startsWith('image/')||file.mime_type==='application/pdf','Comprovante inválido.');
+  assert(file.uploaded_by===user.id,'Envie seu próprio comprovante.',403);
+  const result=await env.DB.prepare("UPDATE payments SET amount_cents=?,paid_minutes=?,payment_date=?,file_id=?,notes=?,updated_at=? WHERE id=? AND status='pending' AND deleted_at IS NULL")
+   .bind(cents,minutes,date,fileId,text(b.notes,700),at,existing.id).run();
+  assert(result.meta.changes===1,'Este pagamento já foi conferido.',409);
+  await log(env,user,'update_pending_payment','payment',existing.id,{before_amount_cents:existing.amount_cents,after_amount_cents:cents});
+  return json({ok:true});
  }
  if(path==='/api/users'&&method==='POST'){
   requireRole(user,'admin');const b=await bodyJson(request);
@@ -466,7 +513,7 @@ async function handler(request,env){
   }else if(type==='maintenance'){
    rows=data.maintenance.map(x=>({...x,valor:(x.amount_cents/100).toFixed(2)}));headers=[['Data','expense_date'],['Categoria','category'],['Descrição','description'],['Valor (R$)','valor'],['Quem pagou','payer_role'],['Observações','notes']];
   }else if(type==='payments'){
-   rows=data.payments.map(x=>({...x,valor:(x.amount_cents/100).toFixed(2),horas:(x.paid_minutes/60).toFixed(2)}));headers=[['Data','payment_date'],['Valor (R$)','valor'],['Horas pagas','horas'],['Observações','notes']];
+   rows=data.payments.map(x=>({...x,valor:(x.amount_cents/100).toFixed(2),horas:(x.paid_minutes/60).toFixed(2),situacao:({pending:'Pendente',approved:'Aprovado',rejected:'Recusado'})[x.status]||x.status}));headers=[['Data','payment_date'],['Valor (R$)','valor'],['Horas informadas','horas'],['Situação','situacao'],['Observações','notes']];
   }else throw new HttpError('Tipo de exportação inválido.');
   return new Response(csv(rows,headers),{headers:{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename="mini-${type}.csv"`,'Cache-Control':'no-store'}});
  }
