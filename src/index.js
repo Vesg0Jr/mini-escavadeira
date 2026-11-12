@@ -150,10 +150,10 @@ async function fileResponse(env,user,fileId){
  return new Response(obj.body,{headers:{'Content-Type':f.mime_type,'Content-Disposition':`inline; filename="arquivo-${f.id}.${f.mime_type==='application/pdf'?'pdf':f.mime_type==='image/png'?'png':f.mime_type==='image/webp'?'webp':'jpg'}"`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 }
 async function handler(request,env){
- if(!env.DB||!env.FILES)throw new HttpError('Configure os bindings D1 (DB) e R2 (FILES).',503);
+ if(!env.DB||!env.FILES)throw new HttpError('Serviço temporariamente indisponível. Tente novamente mais tarde.',503);
  const url=new URL(request.url);const path=url.pathname;const method=request.method; const at=nowMs();
  if(method!=='GET'&&method!=='HEAD')sameOrigin(request);
- if(path==='/api/health'&&method==='GET')return json({ok:true,application:'Gestão Mini Escavadeira',version:'1.0.0'});
+ if(path==='/api/health'&&method==='GET')return json({ok:true});
  if(path==='/api/bootstrap'&&method==='GET'){
   const count=await env.DB.prepare('SELECT COUNT(*) n FROM users').first();return json({needs_setup:count.n===0});
  }
@@ -162,7 +162,7 @@ async function handler(request,env){
   try {
    const exists=await env.DB.prepare('SELECT COUNT(*) n FROM users').first();assert(exists.n===0,'O administrador já foi configurado.',403);
    stage='validar chave e formulário';
-   const b=await bodyJson(request);assert(env.ADMIN_SETUP_KEY&&env.ADMIN_SETUP_KEY.length>=16,'Chave de instalação não configurada no Cloudflare.',503);assert(typeof b.setup_key==='string'&&b.setup_key===env.ADMIN_SETUP_KEY,'Chave de instalação incorreta.',403);const name=requireString(b.name,'Nome',100);const username=requireString(b.username,'Usuário',60).toLowerCase();validatePassword(b.password);
+   const b=await bodyJson(request);assert(env.ADMIN_SETUP_KEY&&env.ADMIN_SETUP_KEY.length>=16,'Não foi possível concluir a ativação. Contate o responsável pelo sistema.',503);assert(typeof b.setup_key==='string'&&b.setup_key===env.ADMIN_SETUP_KEY,'Chave de instalação incorreta.',403);const name=requireString(b.name,'Nome',100);const username=requireString(b.username,'Usuário',60).toLowerCase();validatePassword(b.password);
    assert(/^[a-z0-9._-]{3,60}$/.test(username),'Usuário deve usar letras, números, ponto, hífen ou sublinhado.');
    stage='proteger senha';
    const uId=id(),salt=id(),pass=await hashPassword(b.password,salt);
@@ -178,7 +178,7 @@ async function handler(request,env){
   } catch (e) {
    if(e instanceof HttpError)throw e;
    console.error('Setup admin falhou na etapa:',stage,e);
-   throw new HttpError('Falha durante a etapa: '+stage+'. Consulte os logs da Cloudflare.',500);
+   throw new HttpError('Não foi possível concluir a ativação. Tente novamente mais tarde.',500);
   }
  }
  if(path==='/api/login'&&method==='POST'){
@@ -484,6 +484,6 @@ export default {async fetch(request,env){
   console.error('API error',e);
   if(message.includes('UNIQUE constraint failed'))return error('Já existe um registro com esses dados ou uma obra em andamento.',409);
   if(message.includes('FOREIGN KEY constraint failed'))return error('Referência inexistente.',400);
-  return error('Falha interna ao processar a solicitação. Consulte os logs.',500);
+  return error('Não foi possível concluir a operação. Tente novamente mais tarde.',500);
  }
 }};
