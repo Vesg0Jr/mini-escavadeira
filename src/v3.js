@@ -58,7 +58,7 @@ export function intervals(rows,now){
  for(const row of rows){
   const kind=row.type;
   if(!['run','pause'].includes(kind))fail('Tipo de período inválido.');
-  if(previous===kind)fail('Alterne motor ligado e pausa na sequência.');
+  if(previous==='run'&&kind==='run')fail('Adicione a pausa entre dois períodos de motor ligado.');
   const start=goodDate(row.start_at,'Início do período'),end=goodDate(row.end_at,'Fim do período');
   if(end<=start||end-start>24*3600000)fail('Cada intervalo precisa ter início anterior ao fim e no máximo 24 horas.');
   if(lastEnd!==null&&start!==lastEnd)fail('Preencha o intervalo inteiro, sem lacunas ou sobreposições. Adicione uma pausa para o tempo desligado.');
