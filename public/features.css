@@ -243,3 +243,22 @@
    line-height:1;
  }
 }
+
+/* Conta e recuperação de senha */
+.v3-forgot {
+ display:block;
+ width:100%;
+ margin-top:14px;
+ padding:9px;
+ background:transparent;
+ border:0;
+ color:#1b8068;
+ font-size:13px;
+ font-weight:750;
+ text-decoration:underline;
+ text-underline-offset:3px;
+ cursor:pointer;
+}
+.v3-forgot:hover{color:#0b5848}
+#v3-recovery-form .field input{width:100%}
+#v3-recovery-form .auth-error{min-height:20px;margin:7px 0}
