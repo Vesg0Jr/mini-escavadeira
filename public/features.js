@@ -255,7 +255,10 @@ function v3OpenForm(kind,recordId){
   if(runningJob())return notify('Encerre primeiro a obra atual.',true);
   if(!orders.length)return notify('Primeiro cadastre um cliente e agende uma obra no Calendário.',true);
   const selected=orders.some(x=>x[0]===recordId)?recordId:orders[0][0];
-  const b=v3Select('Cliente e obra agendada *',{field:'work_order_id',options:orders},selected)+
+  const picked=(d.work_orders||[]).find(o=>o.id===selected),selectedClient=picked?.client_id||'';
+  const options=orders.filter(o=>(d.work_orders||[]).find(x=>x.id===o[0])?.client_id===selectedClient);
+  const b=v3Select('Cliente cadastrado *',{field:'client_id',options:people},selectedClient)+
+   v3Select('Obra agendada *',{field:'work_order_id',options},selected)+
    v3Select('Quando iniciar?',{field:'start_timing',options:[['now','Motor ligado agora'],['scheduled','Programado (ajustar agenda)']]},'now')+
    v3Select('Como controlar?',{field:'mode',options:[['digital','Horímetro digital + cronômetro'],['timer','Cronômetro de motor ligado']]},'digital')+
    v3Control('Leitura inicial do horímetro (opcional)','start_meter','','type="number" min="0" step="0.01"')+
@@ -299,7 +302,11 @@ function v3OpenForm(kind,recordId){
  }
  if(kind==='manual'){
   if(!orders.length)return notify('Agende uma obra antes de lançar períodos manuais.',true);
-  const b=v3Select('Cliente e obra *',{field:'work_order_id',options:orders},recordId)+
+  const picked=(d.work_orders||[]).find(o=>o.id===(recordId||orders[0][0]));
+  const selectedClient=picked?.client_id||'';
+  const options=orders.filter(o=>(d.work_orders||[]).find(x=>x.id===o[0])?.client_id===selectedClient);
+  const b=v3Select('Cliente cadastrado *',{field:'client_id',options:people},selectedClient)+
+   v3Select('Obra agendada *',{field:'work_order_id',options},recordId||options[0]?.[0])+
    '<div class="field wide"><strong>Períodos do motor e pausas</strong><div class="muted small">Digite a data e a hora para cada período. Adicione quantas pausas forem necessárias.</div>'+
    '<div id="v3-periods">'+v3Period('run',0)+'</div><div class="row-actions"><button class="button light sm" type="button" data-action="v3-add-pause">+ Adicionar pausa</button><button class="button light sm" type="button" data-action="v3-add-run">+ Partida do motor</button></div></div>'+
    v3Control('Horímetro inicial (opcional)','start_meter','','type="number" min="0" step="0.01"')+
@@ -437,6 +444,14 @@ async function v3Submit(event){
 }
 dialog.addEventListener('submit',v3Submit);
 dialog.addEventListener('change',e=>{
+ if(e.target.name==='client_id'&&e.target.form?.id==='v3-form'&&['start','manual'].includes(e.target.form.dataset.kind)){
+  const select=e.target.form.querySelector('[name="work_order_id"]');
+  if(select){
+   const orders=(state.data.work_orders||[]).filter(o=>o.status==='scheduled'&&o.client_id===e.target.value);
+   const clients=state.data.clients||[];
+   select.innerHTML=orders.map(o=>'<option value="'+esc(o.id)+'">'+esc(o.title+' · '+datePt(o.planned_start))+'</option>').join('')||'<option value="">Nenhuma obra agendada para este cliente</option>';
+  }
+ }
  if(e.target.id==='v3-manual-review'){
   const box=dialog.querySelector('.v3-review');if(box)box.hidden=!e.target.checked;
  }
