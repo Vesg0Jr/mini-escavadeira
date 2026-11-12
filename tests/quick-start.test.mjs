@@ -15,7 +15,7 @@ function dbMock({client=null,active=null}={}){
     bind(...args){return {first: async()=>{
       if(sql.includes('FROM clients'))return client;
       if(sql.includes('FROM rates'))return {id:1,amount_cents:10000};
-      if(sql.includes('FROM machines WHERE id='))return {id:STARTER_MACHINE_ID,name:'MINI ESCAVADEIRA 1.500 TONELADAS',status:'available'};
+      if(sql.includes('FROM machines WHERE id='))return {id:args[0],name:'Máquina de teste',status:'available'};
       if(sql.includes('FROM jobs WHERE machine_id='))return active;
       return null;
     },all:async()=>({results:[]}),run:async()=>({success:true})}},
@@ -44,6 +44,19 @@ test('operador escolhe cliente já cadastrado e inicia sem novo cadastro',async(
  const {response,sqlLog}=await run({client_id:client.id,title:'Escavação',start_timing:'now',machine_ids:[STARTER_MACHINE_ID]},{client});
  assert.equal(response.status,201);
  assert.equal(sqlLog.length,5);
+});
+test('uma obra pode iniciar duas máquinas com cronômetros e registros separados',async()=>{
+ const other='00000000-0000-4000-8000-000000000002';
+ const {response,sqlLog}=await run({
+   client_name:'Duas máquinas',client_phone:'32999999999',client_service:'Escavação',
+   title:'Obra com duas máquinas',start_timing:'now',mode:'digital',
+   machine_ids:[STARTER_MACHINE_ID,other]
+ });
+ assert.equal(response.status,201);
+ const data=await response.json();
+ assert.equal(data.job_ids.length,2);
+ assert.notEqual(data.job_ids[0],data.job_ids[1]);
+ assert.equal(sqlLog.length,8); // cliente, obra, dois vínculos, dois jobs, dois segmentos, auditoria
 });
 test('operador pode programar uma obra futura sem ligar o motor',async()=>{
  const {response,sqlLog}=await run({client_name:'Cliente Programado',client_phone:'32999999999',client_service:'Escavação',title:'Obra agendada',start_timing:'scheduled',planned_start:'2099-01-15T08:00',planned_end:'2099-01-15T11:00',expected_hours:3,machine_ids:[STARTER_MACHINE_ID]});
