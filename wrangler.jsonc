@@ -28,5 +28,11 @@
     "logs": {
       "enabled": true
     }
-  }
+  },
+  "routes": [
+    {
+      "pattern": "obras.formacerta.online",
+      "custom_domain": true
+    }
+  ]
 }
