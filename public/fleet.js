@@ -78,7 +78,7 @@ function fleetMultiChooser(selected=[],quick=false){
 function fleetSingleChooser(machines,selected='',required=true){
  const opts=(machines||[]).map(m=>[m.id,m.name+' · '+(m.availability==='in_use'?'Em obra':m.code)]);
  if(!opts.length)return '<div class="notice warn field wide">Nenhuma máquina livre e vinculada a esta obra. Selecione outra obra ou finalize as jornadas existentes.</div>';
- return v3Select('Máquina que será utilizada *',{field:'machine_id',options:opts},selected||opts[0][0],required);
+ return '<div class="fleet-choice-single">'+v3Select('Máquina que será utilizada *',{field:'machine_id',options:opts},selected||opts[0][0],required)+'</div>';
 }
 function fleetForm(machineId){
  const owner=state.data.fleet_owner;if(!owner)return notify('Apenas o administrador proprietário pode cadastrar máquinas.',true);
