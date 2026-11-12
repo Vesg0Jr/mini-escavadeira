@@ -292,7 +292,7 @@ function v3OpenForm(kind,recordId){
    [1,2,3].map(i=>'<label>Foto '+i+' *<input type="file" name="end_photo_'+i+'" data-end-photo required accept="image/*" /></label>').join('')+
    '</div><small>Você pode anexar mais três fotos se desejar.</small><input type="file" name="end_photos_extra" multiple accept="image/*"/></div>'+
    '<div class="field wide"><label><input type="checkbox" name="manual_review_enabled" id="v3-manual-review" /> Também preencher observações manuais?</label></div>'+
-   '<div class="field wide v3-review" hidden>'+v3Text('Conferência de partidas, pausas e horários (não cobra duas vezes)','manual_notes')+'</div>'+
+   '<div class="field wide v3-review" hidden><div class="notice">Conferência opcional, sem somar as horas novamente.</div><div id="v3-review-periods">'+v3Period('run',0)+'</div><div class="row-actions"><button type="button" class="button light sm" data-action="v3-add-pause">+ Adicionar pausa</button><button type="button" class="button light sm" data-action="v3-add-run">+ Partida do motor</button></div>'+v3Text('Observações da conferência','manual_notes')+'</div>'+
    '<div class="notice warn field wide">As horas já contadas pelo cronômetro não serão somadas novamente. Uma conferência manual é apenas um registro de apoio.</div>';
   modal('Encerrar obra · 3 fotos',v3Form('finish',b,'Confirmar encerramento'));
   dialog.dataset.v3id=recordId;return;
@@ -335,13 +335,14 @@ clickAction=async function(action,id){
   const d=new Date(Date.UTC(year,m-1+delta,1));v3ui.month=d.toISOString().slice(0,7);render();return;
  }
  if(action==='v3-add-pause'){
-  const area=dialog.querySelector('#v3-periods'),idx=area.querySelectorAll('[data-kind="pause"]').length+1;
+  const area=dialog.querySelector('#v3-periods')||dialog.querySelector('#v3-review-periods');if(!area)return;
+  const idx=area.querySelectorAll('[data-kind="pause"]').length+1;
   if(idx>12)return notify('Limite de 12 pausas por lançamento.',true);
   area.insertAdjacentHTML('beforeend',v3Period('pause',idx));
   return;
  }
  if(action==='v3-add-run'){
-  const area=dialog.querySelector('#v3-periods');
+  const area=dialog.querySelector('#v3-periods')||dialog.querySelector('#v3-review-periods');
   if(!area)return;
   if(area.lastElementChild?.dataset.kind!=='pause')return notify('Adicione uma pausa antes de começar outra partida.',true);
   area.insertAdjacentHTML('beforeend',v3Period('run',area.querySelectorAll('[data-kind="run"]').length));
@@ -412,7 +413,13 @@ async function v3Submit(event){
    state.view='jobs';
   }else if(kind==='finish'){
    const photo_ids=await v3Photos(form);
-   const manual_review=data.manual_review_enabled?{notes:data.manual_notes||'',kind:'supplemental'}:null;
+   let manual_review=null;
+   if(data.manual_review_enabled){
+    const entries=[...form.querySelectorAll('#v3-review-periods .v3-period')];
+    const rows=entries.map(p=>({type:p.dataset.kind,start_at:p.querySelector('[name="period_start"]').value,end_at:p.querySelector('[name="period_end"]').value,reason:p.querySelector('[name="reason"]')?.value||''}));
+    if(rows.some(x=>!x.start_at||!x.end_at||(x.type==='pause'&&!x.reason)))throw new Error('Preencha todos os horários e motivos da conferência manual.');
+    manual_review={kind:'supplemental',rows,notes:data.manual_notes||''};
+   }
    result=await api('/v3/jobs/'+recordId+'/finish','POST',{end_meter:data.end_meter,photo_ids,manual_review});
   }else if(kind==='pause'){
    result=await api('/v3/jobs/'+recordId+'/pause','POST',{reason:data.reason});
