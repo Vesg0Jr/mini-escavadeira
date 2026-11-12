@@ -31,6 +31,12 @@ const checks = [
     validate: (response, body) => response.status === 200 && typeof body === 'string' && body.includes('v3-burger') },
   { name: 'Logo FormaCerta', path: '/formacerta.svg',
     validate: (response, body) => response.status === 200 && typeof body === 'string' && body.includes('FormaCerta') },
+  { name: 'Interface de máquinas (JavaScript)', path: '/fleet.js',
+    validate: (response, body) => response.status === 200 && typeof body === 'string' && body.includes('fleetRender') && body.includes('fleetMultiChooser') },
+  { name: 'Layout de máquinas (CSS)', path: '/fleet.css',
+    validate: (response, body) => response.status === 200 && typeof body === 'string' && body.includes('.fleet-grid') },
+  { name: 'Foto de máquina exige login', path: '/api/v4/machines/seed-photo',
+    validate: (response, body) => response.status === 401 && typeof body?.error === 'string' },
   { name: 'Proteção sem login', path: '/api/state',
     validate: (response, body) => response.status === 401 && typeof body?.error === 'string' }
 ];
