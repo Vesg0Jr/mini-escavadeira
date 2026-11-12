@@ -30,7 +30,7 @@ export async function machineState(env,user,base) {
  ]);
  const ids=user.role==='operator'?new Set(base.work_orders?.map(o=>o.id)||[]):null;
  const orderMachines=ids?links.filter(x=>ids.has(x.work_order_id)):links;
- return {...base,machines:machines.map(m=>({...m,open_jobs:Number(m.open_jobs||0),worked_ms:Number(m.worked_ms||0),
+ return {...base,machines:machines.map(m=>({...m,photo_path:m.photo_path==='/machines/mini-01.webp'?'/api/v4/machines/seed-photo':m.photo_path,open_jobs:Number(m.open_jobs||0),worked_ms:Number(m.worked_ms||0),
   availability:m.status==='available'?(Number(m.open_jobs)>0?'in_use':'available'):m.status})),
   order_machines:orderMachines,
   fleet_owner:owner};
@@ -97,6 +97,11 @@ export async function updateOrderStatus(env,orderId,at) {
 }
 export async function machineRoutes(request,env,user,at) {
  const path=new URL(request.url).pathname,method=request.method;
+ if(path==='/api/v4/machines/seed-photo'&&method==='GET'){
+  const obj=await env.FILES.get('machines/mini-01.webp');
+  if(!obj)return new Response(null,{status:404});
+  return new Response(obj.body,{status:200,headers:{'Content-Type':'image/webp','Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'}});
+ }
  if(path==='/api/v4/machines'&&method==='POST'){
   await ownerOnly(env,user);const b=await body(request);
   const name=str(b.name,140),code=str(b.code,40).toUpperCase(),machine_type=str(b.machine_type||'Mini escavadeira',120);
