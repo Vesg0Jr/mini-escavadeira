@@ -25,6 +25,12 @@ const checks = [
     validate: (response, body) => response.status === 200 && typeof body === 'string' && body.length > 1000 },
   { name: 'CSS da interface', path: '/styles.css',
     validate: (response, body) => response.status === 200 && typeof body === 'string' && body.length > 1000 },
+  { name: 'Agenda e cadastros (JavaScript)', path: '/features.js',
+    validate: (response, body) => response.status === 200 && typeof body === 'string' && body.includes('v3Calendar') && body.includes('v3Clients') },
+  { name: 'Menu responsivo (CSS)', path: '/features.css',
+    validate: (response, body) => response.status === 200 && typeof body === 'string' && body.includes('v3-burger') },
+  { name: 'Logo FormaCerta', path: '/formacerta.svg',
+    validate: (response, body) => response.status === 200 && typeof body === 'string' && body.includes('FormaCerta') },
   { name: 'Proteção sem login', path: '/api/state',
     validate: (response, body) => response.status === 401 && typeof body?.error === 'string' }
 ];
