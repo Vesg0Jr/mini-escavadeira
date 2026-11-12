@@ -26,4 +26,5 @@ jobs:
       - run: node --check public/features.js
       - run: node --check public/fleet.js
       - run: node --check public/finance.js
+      - run: node --check public/nav-icons.js
       - run: node --check scripts/smoke-test.mjs
