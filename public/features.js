@@ -4,7 +4,8 @@ const oldRenderAuth=renderAuth;
 renderAuth=function(setup){
  oldRenderAuth(setup);
  const symbol=document.querySelector('.login-panel .brand-mark');
- if(symbol)symbol.outerHTML='<img class="v3-login-logo" src="/formacerta.svg" alt="FormaCerta" />';
+ if(symbol)symbol.outerHTML='<img class="v3-login-logo" src="/formacerta-preto.png" alt="FormaCerta" />';
+ if(!setup)document.querySelector('.login-panel input[name="name"]')?.closest('.field')?.remove();
  const brand=document.querySelector('.login-panel .eyebrow');
  if(brand)brand.textContent='FormaCerta · Gestão de Obras e Horas';
 };
@@ -29,7 +30,7 @@ render=function(){
  if(!sidebar||!brand||!header)return;
  sidebar.classList.toggle('v3-collapsed',v3ui.sidebarCollapsed);
  sidebar.classList.toggle('v3-open',v3ui.mobileOpen);
- brand.innerHTML='<span class="v3-logo-frame"><img class="v3-logo" src="/formacerta.svg" alt="FormaCerta" /></span>'+
+ brand.innerHTML='<span class="v3-logo-frame"><img class="v3-logo" src="/formacerta-branco.png" alt="FormaCerta" /></span>'+
   '<button type="button" class="v3-side-toggle" data-action="v3-collapse" title="Recolher ou expandir menu" aria-label="Alternar barra lateral">☷</button>';
  const title=header.querySelector('h1');
  if(title)header.insertAdjacentHTML('afterbegin','<button type="button" class="v3-burger" data-action="v3-mobile-menu" aria-label="Abrir ou fechar menu">☰</button>');
