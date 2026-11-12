@@ -1,4 +1,5 @@
 // Extensões da plataforma: clientes, agenda, apontamentos, fotos e ocorrências.
+import {selectedMachines,assignedMachine,orderMachineRows,updateOrderStatus} from './machines.js';
 const uid=()=>crypto.randomUUID();
 const clean=(v,max=240)=>String(v??'').trim().slice(0,max);
 const fail=(message,status=400)=>{const e=new Error(message);e.status=status;throw e;};
@@ -119,30 +120,31 @@ export async function v3Route(request,env,user,at){
    end=goodDate(b.planned_end,'Fim programado');
    minutes=b.expected_hours!==undefined&&String(b.expected_hours).trim()!==''?Math.round(Number(b.expected_hours)*60):Math.round((end-start)/60000);
    if(start<at-300000||end<=start||end-start>72*3600000||!Number.isInteger(minutes)||minutes<1||minutes>4320)fail('Confira a data de agendamento e as horas previstas.');
-   const collision=await one(env.DB,"SELECT id FROM work_orders WHERE status='scheduled' AND planned_start<? AND planned_end>? LIMIT 1",end,start);
-   if(collision)fail('Já existe uma obra agendada nesse horário.',409);
-  }else{
-   const active=await one(env.DB,"SELECT id FROM jobs WHERE status!='finished' AND deleted_at IS NULL LIMIT 1");
-   if(active)fail('Já existe uma obra em execução. Encerre antes de iniciar outra.',409);
   }
+  const machines=await selectedMachines(env,b.machine_ids,{start:scheduled?start:null,end:scheduled?end:null,requireIdle:!scheduled});
   const orderId=uid(),jobId=uid(),operatorId=user.id;
   const operations=[];
   if(addClient)operations.push(env.DB.prepare('INSERT INTO clients(id,name,phone,service,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
     .bind(client.id,client.name,client.phone,client.service,'Cadastrado durante início rápido',user.id,at,at));
   operations.push(env.DB.prepare("INSERT INTO work_orders(id,client_id,title,service,location,planned_start,planned_end,expected_minutes,hourly_cents,operator_id,status,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,? ,?,?,?,?,?)")
    .bind(orderId,clientId,title,service,location,start,end,minutes,hourly.amount_cents,operatorId,scheduled?'scheduled':'in_progress',notes,user.id,at,at));
+  operations.push(...orderMachineRows(env.DB,orderId,machines,user.id,at));
+  const jobIds=[];
   if(!scheduled){
-   operations.push(env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,start_file_id,started_at,created_by,updated_at,client_id,work_order_id,meter_mode,photo_requirement) VALUES(?,?,?,?,?,'running',?,?,?,?,?,?,?,?,1)")
-     .bind(jobId,client.name,location,service,operatorId,initial,picture,at,user.id,at,clientId,orderId,mode));
-   operations.push(env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?)')
-     .bind(uid(),jobId,at,hourly.amount_cents,hourly.id));
-   if(picture)operations.push(env.DB.prepare("INSERT INTO job_photos(id,job_id,file_id,phase,created_by,created_at) VALUES(?,?,?,'start',?,?)")
-     .bind(uid(),jobId,picture,user.id,at));
+   for(const machine of machines){
+    const jid=jobIds.length===0?jobId:uid();jobIds.push(jid);
+    operations.push(env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,start_file_id,started_at,created_by,updated_at,client_id,work_order_id,meter_mode,photo_requirement,machine_id) VALUES(?,?,?,?,?,'running',?,?,?,?,?,?,?,?,1,?)")
+      .bind(jid,client.name,location,service,operatorId,initial,picture,at,user.id,at,clientId,orderId,mode,machine.id));
+    operations.push(env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?)')
+      .bind(uid(),jid,at,hourly.amount_cents,hourly.id));
+    if(picture)operations.push(env.DB.prepare("INSERT INTO job_photos(id,job_id,file_id,phase,created_by,created_at) VALUES(?,?,?,'start',?,?)")
+      .bind(uid(),jid,picture,user.id,at));
+   }
   }
   operations.push(env.DB.prepare('INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)')
     .bind(uid(),user.id,scheduled?'quick_schedule':'quick_start','work_order',orderId,JSON.stringify({client_id:clientId,client_created:addClient,job_id:scheduled?null:jobId}),at));
   await env.DB.batch(operations);
-  return json({ok:true,client_id:clientId,work_order_id:orderId,job_id:scheduled?null:jobId,scheduled},201);
+  return json({ok:true,client_id:clientId,work_order_id:orderId,job_id:scheduled?null:jobId,job_ids:scheduled?[]:jobIds,scheduled},201);
  }
  if(path==='/api/v3/manual-quick'&&method==='POST'){
   // Registro manual iniciado pelo botão principal, sem exigir agendamento prévio.
