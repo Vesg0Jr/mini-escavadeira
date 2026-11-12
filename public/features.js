@@ -617,16 +617,31 @@ function v3ShowRecovery(){
  root.innerHTML='<div class="login-page"><div class="login-panel">'+
  '<img class="v3-login-logo" src="/formacerta-preto.png" alt="FormaCerta" />'+
  '<span class="eyebrow">Segurança da sua conta</span><h1>Recuperar senha</h1>'+
- '<p>Use o código temporário fornecido pelo administrador da Cloudflare. Nenhuma senha antiga é necessária.</p>'+
+ '<p>Você não precisa da senha antiga. Gere um código seguro aqui e cadastre-o na Cloudflare como Secret antes de redefinir.</p>'+
+ '<div class="notice v3-recovery-instructions"><strong>Como configurar:</strong> 1. Gere e copie o código. 2. Cloudflare → mini-escavadeira → Settings → Variables and Secrets → Add → Secret. Nome: <strong>ADMIN_RECOVERY_KEY</strong>. Valor: o código copiado. Salve. 3. Volte aqui e crie a nova senha. 4. Após o sucesso, remova esse Secret da Cloudflare.</div>'+
  '<form id="v3-recovery-form">'+
  '<div class="field"><label>Usuário</label><input name="username" value="admin.geral" autocomplete="username" required minlength="3"/></div>'+
- '<div class="field"><label>Código temporário</label><input name="recovery_code" type="text" spellcheck="false" autocapitalize="none" autocomplete="one-time-code" pattern="[a-fA-F0-9]{64}" maxlength="64" minlength="64" required placeholder="Cole o código de recuperação"/></div>'+
+ '<div class="field"><label>Código de recuperação (uso único)</label>'+
+ '<div class="row-actions"><button type="button" class="button light sm" id="v3-generate-code">Gerar código seguro</button><button type="button" class="button light sm" id="v3-copy-code">Copiar código</button></div>'+
+ '<input name="recovery_code" type="text" spellcheck="false" autocapitalize="none" autocomplete="off" pattern="[a-fA-F0-9]{64}" maxlength="64" minlength="64" required placeholder="Clique em Gerar código seguro"/></div>'+
  '<div class="field"><label>Nova senha</label><input name="new_password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required/></div>'+
  '<div class="field"><label>Confirmar nova senha</label><input name="confirm_password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required/></div>'+
  '<p id="v3-recovery-error" class="auth-error" role="alert"></p>'+
  '<button class="button primary full" type="submit">Redefinir senha</button></form>'+
  '<button class="v3-forgot" type="button" data-action="v3-back-login">Voltar ao login</button>'+
  '</div></div>';
+ const codeInput=root.querySelector('#v3-recovery-form input[name="recovery_code"]');
+ root.querySelector('#v3-generate-code')?.addEventListener('click',()=>{
+  const random=new Uint8Array(32);crypto.getRandomValues(random);
+  codeInput.value=Array.from(random,b=>b.toString(16).padStart(2,'0')).join('');
+  codeInput.focus();codeInput.select();
+  notify('Código gerado neste navegador. Copie e cadastre-o como Secret ADMIN_RECOVERY_KEY na Cloudflare.');
+ });
+ root.querySelector('#v3-copy-code')?.addEventListener('click',async()=>{
+  if(!codeInput.value||codeInput.value.length!==64){notify('Gere um código antes.',true);return;}
+  try{await navigator.clipboard.writeText(codeInput.value);notify('Código copiado. Cole em Secret ADMIN_RECOVERY_KEY na Cloudflare.');}
+  catch{codeInput.focus();codeInput.select();notify('Código selecionado. Copie usando Cmd + C.');}
+ });
  root.querySelector('#v3-recovery-form')?.addEventListener('submit',async event=>{
   event.preventDefault();
   const form=event.currentTarget,submit=form.querySelector('button[type="submit"]');
