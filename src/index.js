@@ -196,6 +196,36 @@ async function handler(request,env){
   await env.DB.prepare('DELETE FROM login_limits WHERE username=?').bind(username).run();
   return json({ok:true,me:publicUser(user)},200,{'Set-Cookie':await issueSession(env,user)});
  }
+ // Recuperação somente por código temporário de uso único emitido pelo administrador da infraestrutura.
+ // A requisição é pública, mas requer um token aleatório forte, cujo hash está armazenado no D1.
+ if(path==='/api/recover-password'&&method==='POST'){
+  const b=await bodyJson(request);
+  const username=text(b.username,60).toLowerCase();
+  const token=String(b.recovery_code||'').trim().toLowerCase();
+  assert(/^[a-f0-9]{64}$/.test(token),'Código de recuperação inválido ou expirado.',400);
+  assert(/^[a-z0-9._-]{3,60}$/.test(username),'Código de recuperação inválido ou expirado.',400);
+  validatePassword(b.new_password);
+  assert(b.new_password===b.confirm_password,'As senhas não conferem.',400);
+  const tokenHash=await sha256(token);
+  const record=await env.DB.prepare(`SELECT t.user_id,u.username FROM password_reset_tokens t
+    JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.used_at IS NULL
+    AND t.expires_at>? AND u.username=? AND u.active=1`).bind(tokenHash,at,username).first();
+  assert(record,'Código de recuperação inválido ou expirado.',400);
+  const salt=id(),pass=await hashPassword(b.new_password,salt);
+  const statements=[
+   env.DB.prepare(`UPDATE users SET password_hash=?,password_salt=? WHERE id=? AND EXISTS
+      (SELECT 1 FROM password_reset_tokens WHERE token_hash=? AND user_id=? AND used_at IS NULL AND expires_at>?)`)
+      .bind(pass,salt,record.user_id,tokenHash,record.user_id,at),
+   env.DB.prepare('UPDATE password_reset_tokens SET used_at=? WHERE token_hash=? AND used_at IS NULL').bind(at,tokenHash),
+   env.DB.prepare('DELETE FROM user_sessions WHERE user_id=?').bind(record.user_id),
+   env.DB.prepare('DELETE FROM login_limits WHERE username=?').bind(username),
+   env.DB.prepare('INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)')
+      .bind(id(),record.user_id,'password_recovered','user',record.user_id,JSON.stringify({method:'one_time_token'}),at)
+  ];
+  const results=await env.DB.batch(statements);
+  assert(results[0].meta.changes===1&&results[1].meta.changes===1,'Código de recuperação já utilizado.',409);
+  return json({ok:true,message:'Senha redefinida. Entre com sua nova senha.'});
+ }
  const user=await auth(request,env);assert(user,'Faça login para continuar.',401);
  if(path==='/api/logout'&&method==='POST'){
   const token=request.headers.get('Cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith(COOKIE+'='))?.slice(COOKIE.length+1);
@@ -203,6 +233,27 @@ async function handler(request,env){
   return json({ok:true},200,{'Set-Cookie':`${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`});
  }
  if(path==='/api/state'&&method==='GET')return json(await state(env,user));
+ if(path==='/api/me/password'&&method==='POST'){
+  const b=await bodyJson(request);
+  const current=String(b.current_password||'');
+  validatePassword(b.new_password);
+  assert(b.new_password===b.confirm_password,'As senhas não conferem.');
+  const valid=await hashPassword(current,user.password_salt)===user.password_hash;
+  assert(valid,'Senha atual incorreta.',403);
+  assert(current!==b.new_password,'Escolha uma senha diferente da atual.');
+  const salt=id(),pass=await hashPassword(b.new_password,salt);
+  await env.DB.batch([
+   env.DB.prepare('UPDATE users SET password_hash=?,password_salt=? WHERE id=?').bind(pass,salt,user.id),
+   env.DB.prepare('DELETE FROM user_sessions WHERE user_id=?').bind(user.id),
+   env.DB.prepare('DELETE FROM login_limits WHERE username=?').bind(user.username),
+   env.DB.prepare('INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)')
+    .bind(id(),user.id,'password_changed','user',user.id,JSON.stringify({method:'current_password'}),at)
+  ]);
+  return json({ok:true,message:'Senha alterada. Entre novamente.'},200,{
+   'Set-Cookie':`${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
+  });
+ }
+
  if(method==='POST'&&(path==='/api/jobs'||path==='/api/jobs/manual'))throw new HttpError('Use o novo fluxo com cliente e obra cadastrados no Calendário. O apontamento manual está em Operação.',409);
  const v3Response=await v3Route(request,env,user,at);
  if(v3Response)return v3Response;
