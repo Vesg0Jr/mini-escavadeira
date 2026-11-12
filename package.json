@@ -1,0 +1,17 @@
+{
+  "name": "gestao-mini-escavadeira",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gestão de obras, horas, horímetro, manutenções e pagamentos em Cloudflare Workers, D1 e R2",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy && wrangler d1 migrations apply DB --remote",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "db:remote": "wrangler d1 migrations apply DB --remote",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
