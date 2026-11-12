@@ -150,17 +150,28 @@ async function handler(request,env){
   const count=await env.DB.prepare('SELECT COUNT(*) n FROM users').first();return json({needs_setup:count.n===0});
  }
  if(path==='/api/setup'&&method==='POST'){
-  const exists=await env.DB.prepare('SELECT COUNT(*) n FROM users').first();assert(exists.n===0,'O administrador já foi configurado.',403);
-  const b=await bodyJson(request);assert(env.ADMIN_SETUP_KEY&&env.ADMIN_SETUP_KEY.length>=16,'Chave de instalação não configurada no Cloudflare.',503);assert(typeof b.setup_key==='string'&&b.setup_key===env.ADMIN_SETUP_KEY,'Chave de instalação incorreta.',403);const name=requireString(b.name,'Nome',100);const username=requireString(b.username,'Usuário',60).toLowerCase();validatePassword(b.password);
-  assert(/^[a-z0-9._-]{3,60}$/.test(username),'Usuário deve usar letras, números, ponto, hífen ou sublinhado.');
-  const uId=id(),salt=id(),pass=await hashPassword(b.password,salt);
-  // A restrição WHERE NOT EXISTS garante somente um usuário fundador, mesmo sob chamadas concorrentes.
-  const res=await env.DB.prepare(`INSERT INTO users(id,name,username,role,password_hash,password_salt,active,created_at)
+  let stage='verificar cadastro inicial';
+  try {
+   const exists=await env.DB.prepare('SELECT COUNT(*) n FROM users').first();assert(exists.n===0,'O administrador já foi configurado.',403);
+   stage='validar chave e formulário';
+   const b=await bodyJson(request);assert(env.ADMIN_SETUP_KEY&&env.ADMIN_SETUP_KEY.length>=16,'Chave de instalação não configurada no Cloudflare.',503);assert(typeof b.setup_key==='string'&&b.setup_key===env.ADMIN_SETUP_KEY,'Chave de instalação incorreta.',403);const name=requireString(b.name,'Nome',100);const username=requireString(b.username,'Usuário',60).toLowerCase();validatePassword(b.password);
+   assert(/^[a-z0-9._-]{3,60}$/.test(username),'Usuário deve usar letras, números, ponto, hífen ou sublinhado.');
+   stage='proteger senha';
+   const uId=id(),salt=id(),pass=await hashPassword(b.password,salt);
+   stage='gravar usuário no banco D1';
+   const res=await env.DB.prepare(`INSERT INTO users(id,name,username,role,password_hash,password_salt,active,created_at)
      SELECT ?,?,?,'admin',?,?,1,? WHERE NOT EXISTS (SELECT 1 FROM users)`).bind(uId,name,username,pass,salt,at).run();
-  assert(res.meta.changes===1,'O administrador já foi configurado.',409);
-  await env.DB.prepare('INSERT INTO rates(amount_cents,effective_at,created_by) VALUES(10000,?,?)').bind(at,uId).run();
-  const user=await env.DB.prepare('SELECT * FROM users WHERE id=?').bind(uId).first();
-  return json({ok:true,me:publicUser(user)},201,{'Set-Cookie':await issueSession(env,user)});
+   assert(res.meta.changes===1,'O administrador já foi configurado.',409);
+   stage='registrar tarifa inicial';
+   await env.DB.prepare('INSERT INTO rates(amount_cents,effective_at,created_by) VALUES(10000,?,?)').bind(at,uId).run();
+   stage='iniciar sessão';
+   const user=await env.DB.prepare('SELECT * FROM users WHERE id=?').bind(uId).first();
+   return json({ok:true,me:publicUser(user)},201,{'Set-Cookie':await issueSession(env,user)});
+  } catch (e) {
+   if(e instanceof HttpError)throw e;
+   console.error('Setup admin falhou na etapa:',stage,e);
+   throw new HttpError('Falha durante a etapa: '+stage+'. Consulte os logs da Cloudflare.',500);
+  }
  }
  if(path==='/api/login'&&method==='POST'){
   const b=await bodyJson(request);const username=text(b.username,60).toLowerCase();const password=String(b.password||'');
