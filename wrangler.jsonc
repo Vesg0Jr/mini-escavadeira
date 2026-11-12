@@ -22,5 +22,11 @@
     {
       "binding": "FILES"
     }
-  ]
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true
+    }
+  }
 }
