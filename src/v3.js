@@ -381,9 +381,10 @@ export async function v3Route(request,env,user,at){
    env.DB.prepare("UPDATE jobs SET status='finished',end_meter=?,end_file_id=?,finished_at=?,updated_at=? WHERE id=?").bind(final,images[0],at,at,job.id)
   ];
   for(const file of images)updates.push(env.DB.prepare("INSERT OR IGNORE INTO job_photos(id,job_id,file_id,phase,created_by,created_at) VALUES(?,?,?,'finish',?,?)").bind(uid(),job.id,file,user.id,at));
-  if(job.work_order_id)updates.push(env.DB.prepare("UPDATE work_orders SET status='completed',updated_at=? WHERE id=?").bind(at,job.work_order_id));
+  // A obra poderá continuar se outras máquinas ainda não tiverem encerrado a jornada.
   if(check)updates.push(env.DB.prepare('INSERT INTO job_checks(id,job_id,detail_json,created_by,created_at) VALUES(?,?,?,?,?)').bind(uid(),job.id,check,user.id,at));
   await env.DB.batch(updates);
+  if(job.work_order_id)await updateOrderStatus(env,job.work_order_id,at);
   await audit(env,user,'finish_photos','job',job.id,{photos:images.length,has_manual_review:!!check},at);
   return json({ok:true});
  }
@@ -393,14 +394,14 @@ export async function v3Route(request,env,user,at){
   const b=await body(request),reason=requireText(b.reason,'Justificativa',350);
   if(action==='reopen'){
    if(job.status!=='finished')fail('Obra já está aberta.',409);
-   const other=await one(env.DB,"SELECT id FROM jobs WHERE status!='finished' AND deleted_at IS NULL LIMIT 1");
+   const other=await one(env.DB,"SELECT id FROM jobs WHERE machine_id=? AND status!='finished' AND deleted_at IS NULL LIMIT 1",job.machine_id);
    if(other)fail('Existe outra obra em andamento. Encerre antes de reabrir.',409);
    await env.DB.prepare("UPDATE jobs SET status='paused',finished_at=NULL,reopened_count=reopened_count+1,updated_at=? WHERE id=?").bind(at,job.id).run();
    if(job.work_order_id)await env.DB.prepare("UPDATE work_orders SET status='in_progress',updated_at=? WHERE id=?").bind(at,job.work_order_id).run();
   }else{
    if(job.status==='running')await env.DB.prepare('UPDATE work_segments SET end_ts=? WHERE job_id=? AND end_ts IS NULL').bind(at,job.id).run();
    await env.DB.prepare("UPDATE jobs SET status='finished',finished_at=COALESCE(finished_at,?),deleted_at=?,updated_at=? WHERE id=?").bind(at,at,at,job.id).run();
-   if(job.work_order_id)await env.DB.prepare("UPDATE work_orders SET status='cancelled',updated_at=? WHERE id=?").bind(at,job.work_order_id).run();
+   if(job.work_order_id)await updateOrderStatus(env,job.work_order_id,at);
   }
   await audit(env,user,action,'job',job.id,{reason},at);
   return json({ok:true});
