@@ -42,3 +42,18 @@
  .fleet-summary{gap:5px}
  .fleet-summary span{padding:6px 8px}
 }
+
+/* Ícone Máquinas no mesmo estilo monocromático dos demais itens do menu. */
+.sidebar .nav button[data-nav="machines"] > span,
+.sidebar.v3-collapsed .nav button[data-nav="machines"] > span {
+ display:inline-block;
+ width:21px;
+ min-width:21px;
+ height:21px;
+ flex:0 0 21px;
+ background-color:currentColor;
+ -webkit-mask:url('/machine-nav.svg') center / contain no-repeat;
+ mask:url('/machine-nav.svg') center / contain no-repeat;
+ font-size:0!important;
+ vertical-align:middle;
+}
