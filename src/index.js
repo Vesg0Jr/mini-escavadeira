@@ -2,6 +2,7 @@ import {segmentAmountCents,segmentDurationMs,maintenanceShares,summarizeJobs} fr
 import {hashPassword} from './password.js';
 import {manualTotals} from './manual.js';
 import {v3State,v3Route} from './v3.js';
+import {machineRoutes,machineState} from './machines.js';
 
 const HOUR_MS = 3600000;
 const DAY_MS = 86400000;
@@ -101,7 +102,7 @@ async function state(env,user){
  const jobs=summarizeJobs(jobsRaw,segments,adjustments,at);
  const rate=await firstRate(env);
  const base={me:publicUser(user),current_rate_cents:rate?.amount_cents||10000,server_now:at,jobs,chart:chartFor(jobs)};
- if(operator)return v3State(env,user,base);
+ if(operator)return machineState(env,user,await v3State(env,user,base));
  const [maintenance,payments,users]=await Promise.all([
    fetchAll(env.DB,'SELECT * FROM maintenance WHERE deleted_at IS NULL ORDER BY expense_date DESC, created_at DESC'),
    fetchAll(env.DB,'SELECT * FROM payments WHERE deleted_at IS NULL ORDER BY payment_date DESC, created_at DESC'),
@@ -115,7 +116,7 @@ async function state(env,user){
  const summary={total_ms:totalMs,earned_cents:totalCents,received_cents:paidCents,remaining_cents:totalCents-paidCents,paid_minutes:paidMinutes,unpaid_minutes:Math.max(0,Math.round(totalMs/60000)-paidMinutes),jobs_finished:jobs.filter(j=>j.status==='finished').length,maintenance:shares};
  const extras={maintenance,payments,users,summary};
  if(user.role==='admin')extras.audit=await fetchAll(env.DB,`SELECT a.*,u.name actor_name FROM audit_log a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100`);
- return v3State(env,user,{...base,...extras});
+ return machineState(env,user,await v3State(env,user,{...base,...extras}));
 }
 async function uploadFile(request,env,user){
  const contentType=request.headers.get('Content-Type')||'';
@@ -142,7 +143,8 @@ async function fileResponse(env,user,fileId){
  const f=await env.DB.prepare('SELECT * FROM files WHERE id=?').bind(fileId).first();assert(f,'Arquivo não encontrado.',404);
  if(user.role==='operator'){
   const ok=await env.DB.prepare(`SELECT 1 FROM jobs WHERE operator_id=? AND (start_file_id=? OR end_file_id=?) LIMIT 1`).bind(user.id,fileId,fileId).first();
-  assert(f.uploaded_by===user.id||ok,'Sem acesso ao arquivo.',403);
+  const machinePhoto=await env.DB.prepare('SELECT 1 FROM machines WHERE photo_file_id=? AND deleted_at IS NULL LIMIT 1').bind(fileId).first();
+  assert(f.uploaded_by===user.id||ok||machinePhoto,'Sem acesso ao arquivo.',403);
  }
  const obj=await env.FILES.get(f.r2_key);assert(obj,'Arquivo não encontrado no armazenamento.',404);
  return new Response(obj.body,{headers:{'Content-Type':f.mime_type,'Content-Disposition':`inline; filename="arquivo-${f.id}.${f.mime_type==='application/pdf'?'pdf':f.mime_type==='image/png'?'png':f.mime_type==='image/webp'?'webp':'jpg'}"`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
@@ -275,6 +277,8 @@ async function handler(request,env){
  }
 
  if(method==='POST'&&(path==='/api/jobs'||path==='/api/jobs/manual'))throw new HttpError('Use o novo fluxo com cliente e obra cadastrados no Calendário. O apontamento manual está em Operação.',409);
+ const machineResponse=await machineRoutes(request,env,user,at);
+ if(machineResponse)return machineResponse;
  const v3Response=await v3Route(request,env,user,at);
  if(v3Response)return v3Response;
  if(path==='/api/upload'&&method==='POST')return uploadFile(request,env,user);
