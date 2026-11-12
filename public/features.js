@@ -1,5 +1,13 @@
 /* MiniGestão v3 - Clientes, Calendário, Operação e Dashboard diário */
 const v3ui={selectedDay:today(),month:today().slice(0,7),sidebarCollapsed:false,mobileOpen:false,chosenOrder:null};
+const oldRenderAuth=renderAuth;
+renderAuth=function(setup){
+ oldRenderAuth(setup);
+ const symbol=document.querySelector('.login-panel .brand-mark');
+ if(symbol)symbol.outerHTML='<img class="v3-login-logo" src="/formacerta.svg" alt="FormaCerta" />';
+ const brand=document.querySelector('.login-panel .eyebrow');
+ if(brand)brand.textContent='FormaCerta · Gestão de Obras e Horas';
+};
 const originalNav=navItems;
 navItems=function(role){
  const list=originalNav(role);
