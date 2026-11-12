@@ -94,3 +94,6 @@
  .sidebar.v3-collapsed .v3-logo-frame{width:100%;max-width:none;display:flex;align-items:center;justify-content:flex-start}
  .sidebar.v3-collapsed .v3-logo{width:100%;min-width:0;max-width:100%;height:auto;max-height:44px;object-fit:contain}
 }
+
+/* Ocultar controles do cronômetro ao escolher apontamento manual. */
+.v3-only-digital[hidden]{display:none!important}
