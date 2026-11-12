@@ -37,8 +37,9 @@ render=function(){
  const newButton=header.querySelector('[data-action="start-form"]');
  if(newButton){newButton.dataset.action='v3-start-form';newButton.textContent='+ Iniciar obra';}
  document.querySelectorAll('.sidebar .nav button').forEach(b=>{
-  const label=b.textContent.trim();b.title=label;
-  const icon=b.querySelector('span');if(icon){const text=b.childNodes[b.childNodes.length-1];if(text?.nodeType===3)text.textContent=label;}
+  const item=navItems(state.data.me.role).find(n=>n[0]===b.dataset.nav);
+  b.title=item?.[2]||'Abrir seção';
+  // Cada opção já possui um ícone no <span> original. Não o duplique no texto.
  });
 };
 const originalRenderPage=renderPage;
@@ -260,18 +261,40 @@ function v3OpenForm(kind,recordId){
   dialog.dataset.v3id=x?.id||'';return;
  }
  if(kind==='start'){
-  if(runningJob())return notify('Encerre primeiro a obra atual.',true);
-  if(!orders.length)return notify('Primeiro cadastre um cliente e agende uma obra no Calendário.',true);
-  const selected=orders.some(x=>x[0]===recordId)?recordId:orders[0][0];
-  const picked=(d.work_orders||[]).find(o=>o.id===selected),selectedClient=picked?.client_id||'';
-  const options=orders.filter(o=>(d.work_orders||[]).find(x=>x.id===o[0])?.client_id===selectedClient);
-  const b=v3Select('Cliente cadastrado *',{field:'client_id',options:people},selectedClient)+
-   v3Select('Obra agendada *',{field:'work_order_id',options},selected)+
-   v3Select('Quando iniciar?',{field:'start_timing',options:[['now','Motor ligado agora'],['scheduled','Programado (ajustar agenda)']]},'now')+
-   v3Select('Como controlar?',{field:'mode',options:[['digital','Horímetro digital + cronômetro'],['timer','Cronômetro de motor ligado']]},'digital')+
-   v3Control('Leitura inicial do horímetro (opcional)','start_meter','','type="number" min="0" step="0.01"')+
-   '<div class="field wide"><label>Foto inicial (opcional)</label><input type="file" name="start_photo" accept="image/*"/></div>';
-  modal('Iniciar obra',v3Form('start',b,'Confirmar início'));
+  if(runningJob())return notify('A máquina já está em operação. Encerre a obra atual primeiro.',true);
+  const selected=orders.some(x=>x[0]===recordId)?recordId:null;
+  if(selected){
+   const b=v3Select('Obra já agendada',{field:'work_order_id',options:orders},selected)+
+     v3Select('Como controlar?',{field:'mode',options:[['timer','Cronômetro · motor ligado'],['digital','Horímetro digital + cronômetro']]},'timer')+
+     v3Control('Leitura inicial do horímetro (opcional)','start_meter','','type="number" min="0" step="0.01"')+
+     '<div class="field wide"><label>Foto inicial (opcional)</label><input type="file" name="start_photo" accept="image/*"/></div>';
+   modal('Iniciar obra agendada',v3Form('start-existing',b,'▶ Iniciar agora'));
+   return;
+  }
+  const clients=d.clients||[];
+  const clientOptions=[...clients.map(c=>[c.id,c.name+' · '+c.phone]),['new','+ Cadastrar novo cliente agora']];
+  const b=v3Select('Cliente · escolha ou cadastre',{field:'client_id',options:clientOptions},clients[0]?.id||'new')+
+    '<div class="field wide v3-new-customer" '+(clients.length?'hidden':'')+'>'+
+    '<div class="notice">Cadastro rápido: este cliente será salvo automaticamente ao iniciar a obra.</div>'+
+    '<div class="form-grid" style="margin-top:12px">'+
+    v3Control('Nome do cliente *','client_name','','maxlength="130"')+
+    v3Control('Telefone com DDD *','client_phone','','type="tel" maxlength="30"')+
+    v3Control('Qual é o serviço *','client_service','','maxlength="200"')+'</div></div>'+
+    v3Control('Nome da obra *','title','','required maxlength="130" placeholder="Ex.: Escavação do terreno"')+
+    v3Control('Serviço realizado','service','','maxlength="200" placeholder="Deixe vazio para usar o serviço do cliente"')+
+    v3Control('Local / endereço da obra','location','','maxlength="240"')+
+    v3Select('Iniciar obra',{field:'start_timing',options:[['now','▶ Ligar o motor agora'],['scheduled','▦ Programar para outro dia']]},'now')+
+    '<div class="field wide v3-quick-schedule" hidden><div class="form-grid">'+
+     v3Control('Data e hora programada *','planned_start',today()+'T08:00','type="datetime-local"')+
+     v3Control('Previsão de fim *','planned_end',today()+'T17:00','type="datetime-local"')+
+     v3Control('Quantidade de horas previstas','expected_hours',8,'type="number" step="0.01" min="0.02"')+
+    '</div></div>'+
+    v3Select('Como controlar?',{field:'mode',options:[['timer','Cronômetro · motor ligado'],['digital','Horímetro digital + cronômetro']]},'timer')+
+    v3Control('Leitura inicial do horímetro (opcional)','start_meter','','type="number" min="0" step="0.01"')+
+    '<div class="field wide"><label>Foto inicial (opcional)</label><input type="file" name="start_photo" accept="image/*"/></div>'+
+    v3Text('Observações','notes');
+  modal('▶ Iniciar obra · cadastro rápido',v3Form('quick',b,'▶ Iniciar obra agora'));
+  v3ToggleQuickForm();
   return;
  }
  if(kind==='pause'){
@@ -326,6 +349,21 @@ function v3OpenForm(kind,recordId){
   modal('Preencher motor e pausas manualmente',v3Form('manual',b,'Salvar e encerrar obra'));
   return;
  }
+}
+function v3ToggleQuickForm(){
+ const form=dialog.querySelector('#v3-form[data-kind="quick"]');if(!form)return;
+ const isNew=form.elements.client_id?.value==='new';
+ const newSection=form.querySelector('.v3-new-customer');
+ if(newSection)newSection.hidden=!isNew;
+ for(const field of ['client_name','client_phone','client_service'])
+   if(form.elements[field])form.elements[field].required=isNew;
+ const isScheduled=form.elements.start_timing?.value==='scheduled';
+ const schedule=form.querySelector('.v3-quick-schedule');
+ if(schedule)schedule.hidden=!isScheduled;
+ for(const field of ['planned_start','planned_end'])
+   if(form.elements[field])form.elements[field].required=isScheduled;
+ const submit=form.querySelector('[type="submit"]');
+ if(submit)submit.textContent=isScheduled?'▦ Agendar obra':'▶ Iniciar obra agora';
 }
 function v3Period(kind,n){
  const title=kind==='run'?'Motor ligado · Partida '+(n+1):'Pausa '+n;
@@ -410,10 +448,13 @@ async function v3Submit(event){
   }else if(kind==='order'){
    const payload={...data};
    result=await api('/v3/orders'+(recordId?'/'+recordId:''),recordId?'PUT':'POST',payload);
-  }else if(kind==='start'){
-   if(data.start_timing==='scheduled'){
-    dialog.close();v3OpenForm('order',data.work_order_id);return;
-   }
+  }else if(kind==='quick'){
+   if(data.client_id==='new')data.client_id=null;
+   data.start_file_id=await v3Upload(form.querySelector('[name="start_photo"]')?.files?.[0]);
+   result=await api('/v3/quick-start','POST',data);
+   state.view=result.scheduled?'calendar':'operation';
+   if(result.scheduled&&data.planned_start){v3ui.selectedDay=data.planned_start.slice(0,10);v3ui.month=data.planned_start.slice(0,7);}
+  }else if(kind==='start-existing'){
    data.start_file_id=await v3Upload(form.querySelector('[name="start_photo"]')?.files?.[0]);
    result=await api('/v3/start','POST',data);
    state.view='operation';
@@ -478,6 +519,7 @@ function v3Recalculate(){
 }
 dialog.addEventListener('input',v3Recalculate);
 dialog.addEventListener('change',e=>{
+ if(e.target.form?.dataset.kind==='quick'&&['client_id','start_timing'].includes(e.target.name))v3ToggleQuickForm();
  if(e.target.name==='client_id'&&e.target.form?.id==='v3-form'&&['start','manual'].includes(e.target.form.dataset.kind)){
   const select=e.target.form.querySelector('[name="work_order_id"]');
   if(select){
