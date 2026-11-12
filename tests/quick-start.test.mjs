@@ -56,7 +56,7 @@ test('uma obra pode iniciar duas máquinas com cronômetros e registros separado
  const data=await response.json();
  assert.equal(data.job_ids.length,2);
  assert.notEqual(data.job_ids[0],data.job_ids[1]);
- assert.equal(sqlLog.length,8); // cliente, obra, dois vínculos, dois jobs, dois segmentos, auditoria
+ assert.equal(sqlLog.length,9); // cliente, obra, dois vínculos, dois jobs, dois segmentos, auditoria
 });
 test('operador pode programar uma obra futura sem ligar o motor',async()=>{
  const {response,sqlLog}=await run({client_name:'Cliente Programado',client_phone:'32999999999',client_service:'Escavação',title:'Obra agendada',start_timing:'scheduled',planned_start:'2099-01-15T08:00',planned_end:'2099-01-15T11:00',expected_hours:3,machine_ids:[STARTER_MACHINE_ID]});
