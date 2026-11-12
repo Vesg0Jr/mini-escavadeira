@@ -171,7 +171,7 @@ export async function v3Route(request,env,user,at){
   if(!tariff)fail('Tarifa não encontrada.',503);
   const id=uid();
   await env.DB.batch([
-   env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,start_file_id,started_at,created_by,updated_at,client_id,work_order_id,meter_mode,photo_requirement) VALUES(?,?,?,?,?,'running',?,?,?,?,?,?,?,1)")
+   env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,start_file_id,started_at,created_by,updated_at,client_id,work_order_id,meter_mode,photo_requirement) VALUES(?,?,?,?,?,'running',?,?,?,?,?,?,?,?,1)")
      .bind(id,client.name,order.location,order.service,owner,initial,photo,at,user.id,at,client.id,order.id,mode),
    env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?)').bind(uid(),id,at,tariff.amount_cents,tariff.id),
    env.DB.prepare("UPDATE work_orders SET status='in_progress',updated_at=? WHERE id=?").bind(at,order.id)
