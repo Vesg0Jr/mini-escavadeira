@@ -332,7 +332,7 @@ function v3Period(kind,n){
  return '<div class="v3-period" data-kind="'+kind+'"><h4>'+title+'</h4>'+
   '<div class="v3-period-fields"><label>'+(kind==='run'?'Partida do motor':'Início da pausa')+'<input type="datetime-local" name="period_start" required /></label>'+
   '<label>'+(kind==='run'?'Motor desligado / fim':'Fim da pausa')+'<input type="datetime-local" name="period_end" required /></label></div>'+
-  (kind==='pause'?'<div class="field"><label>Motivo da pausa *<input name="reason" required placeholder="Ex.: almoço, abastecimento" /></label></div>':'')+
+  (kind==='pause'?'<div class="field"><label>Motivo da pausa *<input name="reason" required placeholder="Ex.: almoço, abastecimento" /></label><small class="v3-pause-length">Duração: preencha os horários (minutos)</small></div>':'')+
   '</div>';
 }
 const originalClick=clickAction;
@@ -451,6 +451,32 @@ async function v3Submit(event){
  finally{state.pending=false;}
 }
 dialog.addEventListener('submit',v3Submit);
+function v3Recalculate(){
+ const f=dialog.querySelector('#v3-form');
+ if(!f)return;
+ const rows=[...f.querySelectorAll('#v3-periods .v3-period')];
+ if(!rows.length)return;
+ let running=0,paused=0,complete=true,valid=true,prior=null;
+ for(const item of rows){
+  const a=item.querySelector('[name="period_start"]')?.value;
+  const b=item.querySelector('[name="period_end"]')?.value;
+  if(!a||!b){complete=false;continue;}
+  const start=Date.parse(a+':00-03:00'),end=Date.parse(b+':00-03:00');
+  const minutes=(end-start)/60000;
+  if(!Number.isFinite(minutes)||minutes<=0||prior!==null&&start!==prior){valid=false;break;}
+  if(item.dataset.kind==='run')running+=minutes;else paused+=minutes;
+  const out=item.querySelector('.v3-pause-length');
+  if(out)out.textContent='Duração desta pausa: '+minutes+' minutos';
+  prior=end;
+ }
+ const box=f.querySelector('#v3-total-preview');
+ if(box){
+  if(!valid)box.textContent='Verifique os períodos: não podem existir intervalos invertidos, lacunas ou sobreposições.';
+  else if(!complete)box.textContent='Preencha os horários de todas as partidas e pausas para ver o total.';
+  else box.textContent='Motor ligado: '+hrs(running*60000)+' · Pausas: '+paused+' minutos · Estimativa: '+money(Math.round(running*state.data.current_rate_cents/60))+' (a tarifa histórica é aplicada ao salvar).';
+ }
+}
+dialog.addEventListener('input',v3Recalculate);
 dialog.addEventListener('change',e=>{
  if(e.target.name==='client_id'&&e.target.form?.id==='v3-form'&&['start','manual'].includes(e.target.form.dataset.kind)){
   const select=e.target.form.querySelector('[name="work_order_id"]');
