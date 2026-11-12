@@ -8,6 +8,10 @@ renderAuth=function(setup){
  if(!setup)document.querySelector('.login-panel input[name="name"]')?.closest('.field')?.remove();
  const brand=document.querySelector('.login-panel .eyebrow');
  if(brand)brand.textContent='FormaCerta · Gestão de Obras e Horas';
+ if(!setup){
+  const form=document.querySelector('#auth-form');
+  form?.insertAdjacentHTML('afterend','<button type="button" class="v3-forgot" data-action="v3-forgot-password">Esqueci minha senha</button>');
+ }
 };
 const originalNav=navItems;
 navItems=function(role){
@@ -35,6 +39,8 @@ render=function(){
   'title="'+(v3ui.sidebarCollapsed?'Expandir menu':'Recolher menu')+'" '+
   'aria-label="'+(v3ui.sidebarCollapsed?'Expandir menu lateral':'Recolher menu lateral')+'" '+
   'aria-expanded="'+String(!v3ui.sidebarCollapsed)+'">'+(v3ui.sidebarCollapsed?'›':'‹')+'</button>';
+ const actions=header.querySelector('.top-actions');
+ if(actions)actions.insertAdjacentHTML('afterbegin','<button type="button" class="button light sm" data-action="v3-password-form" title="Alterar minha senha">Minha senha</button>');
  const title=header.querySelector('h1');
  if(title)header.insertAdjacentHTML('afterbegin','<button type="button" class="v3-burger" data-action="v3-mobile-menu" aria-label="Abrir ou fechar menu">☰</button>');
  if(v3ui.mobileOpen)sidebar.insertAdjacentHTML('afterend','<button class="v3-backdrop" data-action="v3-mobile-menu" aria-label="Fechar menu"></button>');
@@ -51,6 +57,13 @@ render=function(){
    logout.title='Sair do sistema';
    logout.setAttribute('aria-label','Sair do sistema');
  }
+};
+const previousSettings=renderSettings;
+renderSettings=function(){
+ return '<section class="panel"><div class="panel-head"><h2>Segurança da sua conta</h2>'+
+ '<button class="button light sm" data-action="v3-password-form">Alterar minha senha</button></div>'+
+ '<p class="muted small">Altere a senha com a atual. Se a esqueceu, use Esqueci minha senha na tela de login.</p></section>'+
+ previousSettings();
 };
 const originalRenderPage=renderPage;
 renderPage=function(){
@@ -243,6 +256,14 @@ showJob=function(id){
 };
 function v3OpenForm(kind,recordId){
  const d=state.data,people=v3PeopleChoices(),orders=v3OrderChoices();
+ if(kind==='change-password'){
+  const b='<div class="field wide notice">Após alterar sua senha, todos os dispositivos serão desconectados. Entre novamente com a senha nova.</div>'+
+   v3Control('Senha atual *','current_password','','type="password" required autocomplete="current-password"')+
+   v3Control('Nova senha *','new_password','','type="password" minlength="10" maxlength="128" required autocomplete="new-password"')+
+   v3Control('Repita a nova senha *','confirm_password','','type="password" minlength="10" maxlength="128" required autocomplete="new-password"');
+  modal('Alterar minha senha',v3Form('change-password',b,'Salvar nova senha'));
+  return;
+ }
  if(kind==='client'){
   const x=d.clients.find(c=>c.id===recordId);
   const form=v3Form('client',v3Control('Nome do cliente *','name',x?.name,'required maxlength="130"')+
@@ -401,6 +422,9 @@ function v3Period(kind,n){
 }
 const originalClick=clickAction;
 clickAction=async function(action,id){
+ if(action==='v3-forgot-password'){v3ShowRecovery();return;}
+ if(action==='v3-back-login'){renderAuth(false);return;}
+ if(action==='v3-password-form'){v3OpenForm('change-password');return;}
  if(action==='v3-collapse'){v3ui.sidebarCollapsed=!v3ui.sidebarCollapsed;render();return;}
  if(action==='v3-mobile-menu'){v3ui.mobileOpen=!v3ui.mobileOpen;render();return;}
  if(action==='v3-show-day'){
@@ -469,6 +493,12 @@ async function v3Submit(event){
  const kind=form.dataset.kind,recordId=dialog.dataset.v3id,data=Object.fromEntries(new FormData(form));
  try{
   let result;
+  if(kind==='change-password'){
+    if(data.new_password!==data.confirm_password)throw new Error('As senhas não conferem.');
+    await api('/me/password','POST',data);
+    dialog.close();state.data=null;renderAuth(false);notify('Senha alterada. Faça login novamente.');
+    return;
+  }
   if(kind==='client'){
    result=await api('/v3/clients'+(recordId?'/'+recordId:''),recordId?'PUT':'POST',data);
   }else if(kind==='order'){
@@ -579,3 +609,37 @@ dialog.addEventListener('change',e=>{
 
 // Fechar menu mobile depois de escolher uma aba.
 document.addEventListener('click',event=>{if(event.target.closest('[data-nav]'))v3ui.mobileOpen=false;},true);
+
+
+function v3ShowRecovery(){
+ const root=document.querySelector('#app');
+ if(!root)return;
+ root.innerHTML='<div class="login-page"><div class="login-panel">'+
+ '<img class="v3-login-logo" src="/formacerta-preto.png" alt="FormaCerta" />'+
+ '<span class="eyebrow">Segurança da sua conta</span><h1>Recuperar senha</h1>'+
+ '<p>Use o código temporário fornecido pelo administrador da Cloudflare. Nenhuma senha antiga é necessária.</p>'+
+ '<form id="v3-recovery-form">'+
+ '<div class="field"><label>Usuário</label><input name="username" value="admin.geral" autocomplete="username" required minlength="3"/></div>'+
+ '<div class="field"><label>Código temporário</label><input name="recovery_code" type="text" spellcheck="false" autocapitalize="none" autocomplete="one-time-code" pattern="[a-fA-F0-9]{64}" maxlength="64" minlength="64" required placeholder="Cole o código de recuperação"/></div>'+
+ '<div class="field"><label>Nova senha</label><input name="new_password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required/></div>'+
+ '<div class="field"><label>Confirmar nova senha</label><input name="confirm_password" type="password" minlength="10" maxlength="128" autocomplete="new-password" required/></div>'+
+ '<p id="v3-recovery-error" class="auth-error" role="alert"></p>'+
+ '<button class="button primary full" type="submit">Redefinir senha</button></form>'+
+ '<button class="v3-forgot" type="button" data-action="v3-back-login">Voltar ao login</button>'+
+ '</div></div>';
+ root.querySelector('#v3-recovery-form')?.addEventListener('submit',async event=>{
+  event.preventDefault();
+  const form=event.currentTarget,submit=form.querySelector('button[type="submit"]');
+  const data=Object.fromEntries(new FormData(form));
+  const box=document.getElementById('v3-recovery-error');
+  if(data.new_password!==data.confirm_password){box.textContent='As senhas digitadas são diferentes.';return;}
+  submit.disabled=true;
+  try{
+   await api('/recover-password','POST',data);
+   renderAuth(false);
+   notify('Senha redefinida com sucesso! Entre com a senha nova.');
+  }catch(e){
+   box.textContent=e.message;submit.disabled=false;
+  }
+ });
+}
