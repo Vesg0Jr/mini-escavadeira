@@ -144,6 +144,55 @@ export async function v3Route(request,env,user,at){
   await env.DB.batch(operations);
   return json({ok:true,client_id:clientId,work_order_id:orderId,job_id:scheduled?null:jobId,scheduled},201);
  }
+ if(path==='/api/v3/manual-quick'&&method==='POST'){
+  // Registro manual iniciado pelo botão principal, sem exigir agendamento prévio.
+  const b=await body(request);
+  let client=null,clientId=b.client_id||null,newClient=false;
+  if(clientId){
+   client=await one(env.DB,'SELECT * FROM clients WHERE id=? AND deleted_at IS NULL',idIn(clientId));
+   if(!client)fail('Selecione um cliente existente.',404);
+  }else{
+   const name=requireText(b.client_name,'Nome do cliente',130);
+   const phone=requireText(b.client_phone,'Telefone',30);
+   const service=requireText(b.client_service,'Serviço',200);
+   if(phone.replace(/\D/g,'').length<10)fail('Informe telefone com DDD.');
+   clientId=uid();newClient=true;client={id:clientId,name,phone,service};
+  }
+  const title=requireText(b.title,'Nome da obra',130);
+  const service=clean(b.service,200)||client.service;
+  const location=clean(b.location,240),notes=clean(b.notes,700);
+  const rows=intervals(b.rows,at),start=rows[0].start,end=rows.at(-1).end;
+  const conflict=await one(env.DB,"SELECT id FROM jobs WHERE deleted_at IS NULL AND started_at<? AND (finished_at IS NULL OR finished_at>?) LIMIT 1",end,start);
+  if(conflict)fail('Já existe uma obra registrada no mesmo horário.',409);
+  const images=b.photo_ids;
+  if(!Array.isArray(images)||new Set(images).size<3||images.length<3||images.length>12)fail('Para encerrar, anexe pelo menos 3 fotos diferentes.');
+  for(const photo of images)await ownedFile(env,user,idIn(photo));
+  const history=await all(env.DB,'SELECT * FROM rates ORDER BY effective_at ASC,id ASC');
+  const segments=splitRates(rows,history);
+  const initial=meter(b.start_meter),final=meter(b.end_meter);
+  if(initial!==null&&final!==null&&final<initial)fail('Leitura final menor que inicial.');
+  const minutes=segments.reduce((sum,x)=>sum+(x.end-x.start)/60000,0);
+  const pauseMinutes=rows.filter(x=>x.kind==='pause').reduce((sum,x)=>sum+(x.end-x.start)/60000,0);
+  const orderId=uid(),jobId=uid();
+  const ops=[];
+  if(newClient)ops.push(env.DB.prepare('INSERT INTO clients(id,name,phone,service,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
+    .bind(clientId,client.name,client.phone,client.service,'Cadastrado durante lançamento manual',user.id,at,at));
+  ops.push(env.DB.prepare("INSERT INTO work_orders(id,client_id,title,service,location,planned_start,planned_end,expected_minutes,hourly_cents,operator_id,status,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,'completed',?,?,?,?)")
+   .bind(orderId,clientId,title,service,location,start,end,Math.round(minutes),segments[0].cents,user.id,notes,user.id,at,at));
+  ops.push(env.DB.prepare("INSERT INTO jobs(id,customer,location,description,operator_id,status,start_meter,end_meter,start_file_id,end_file_id,started_at,finished_at,created_by,updated_at,entry_mode,manual_pause_minutes,client_id,work_order_id,meter_mode,photo_requirement) VALUES(?,?,?,?,?,'finished',?,?,?,?,?,?,?,?,'manual',?,?,?,? ,1)")
+   .bind(jobId,client.name,location,service,user.id,initial,final,null,images[0],start,end,user.id,at,Math.round(pauseMinutes),clientId,orderId,'manual'));
+  for(const x of segments)ops.push(env.DB.prepare('INSERT INTO work_segments(id,job_id,start_ts,end_ts,hourly_cents,rate_id) VALUES(?,?,?,?,?,?)')
+    .bind(uid(),jobId,x.start,x.end,x.cents,x.rate_id));
+  for(const x of rows.filter(x=>x.kind==='pause'))ops.push(env.DB.prepare('INSERT INTO job_pauses(id,job_id,start_ts,end_ts,reason,created_by,created_at) VALUES(?,?,?,?,?,?,?)')
+    .bind(uid(),jobId,x.start,x.end,x.reason,user.id,at));
+  for(const photo of images)ops.push(env.DB.prepare("INSERT INTO job_photos(id,job_id,file_id,phase,created_by,created_at) VALUES(?,?,?,'finish',?,?)")
+    .bind(uid(),jobId,photo,user.id,at));
+  ops.push(env.DB.prepare('INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)')
+   .bind(uid(),user.id,'quick_manual','job',jobId,JSON.stringify({client_id:clientId,client_created:newClient,order_id:orderId,minutes,pause_minutes:pauseMinutes}),at));
+  await env.DB.batch(ops);
+  const amount=Math.round(segments.reduce((sum,x)=>sum+(x.end-x.start)*x.cents/3600000,0));
+  return json({ok:true,id:jobId,worked_minutes:minutes,amount_cents:amount},201);
+ }
  if(path==='/api/v3/clients'&&method==='POST'){
   roles(user,'admin','manager','operator');const b=await body(request);
   const name=requireText(b.name,'Nome do cliente',130),phone=requireText(b.phone,'Telefone',30),service=requireText(b.service,'Serviço',200);
