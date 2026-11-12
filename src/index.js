@@ -1,6 +1,7 @@
 import {segmentAmountCents,segmentDurationMs,maintenanceShares,summarizeJobs} from './math.js';
 import {hashPassword} from './password.js';
 import {manualTotals} from './manual.js';
+import {v3State,v3Route} from './v3.js';
 
 const HOUR_MS = 3600000;
 const DAY_MS = 86400000;
@@ -58,7 +59,7 @@ async function checkFile(env,fileId,user){
 }
 async function fetchAll(db,query,...args){return (await db.prepare(query).bind(...args).all()).results||[];}
 async function getJob(env,jobId,user){
- const job=await env.DB.prepare('SELECT * FROM jobs WHERE id=?').bind(jobId).first();
+ const job=await env.DB.prepare('SELECT * FROM jobs WHERE id=? AND deleted_at IS NULL').bind(jobId).first();
  assert(job,'Obra não encontrada.',404);
  assert(user.role!=='operator'||job.operator_id===user.id,'Sem acesso à obra.',403);
  return job;
@@ -87,8 +88,8 @@ function chartFor(jobs,days=7,at=nowMs()){
 async function state(env,user){
  const at=nowMs();const operator=user.role==='operator';
  const jobsRaw=operator
-   ? await fetchAll(env.DB,'SELECT * FROM jobs WHERE operator_id=? ORDER BY started_at DESC',user.id)
-   : await fetchAll(env.DB,'SELECT * FROM jobs ORDER BY started_at DESC');
+   ? await fetchAll(env.DB,'SELECT * FROM jobs WHERE operator_id=? AND deleted_at IS NULL ORDER BY started_at DESC',user.id)
+   : await fetchAll(env.DB,'SELECT * FROM jobs WHERE deleted_at IS NULL ORDER BY started_at DESC');
  const ids=jobsRaw.map(x=>x.id);
  let segments=[],adjustments=[];
  if(ids.length){
@@ -100,7 +101,7 @@ async function state(env,user){
  const jobs=summarizeJobs(jobsRaw,segments,adjustments,at);
  const rate=await firstRate(env);
  const base={me:publicUser(user),current_rate_cents:rate?.amount_cents||10000,server_now:at,jobs,chart:chartFor(jobs)};
- if(operator)return base;
+ if(operator)return v3State(env,user,base);
  const [maintenance,payments,users]=await Promise.all([
    fetchAll(env.DB,'SELECT * FROM maintenance WHERE deleted_at IS NULL ORDER BY expense_date DESC, created_at DESC'),
    fetchAll(env.DB,'SELECT * FROM payments WHERE deleted_at IS NULL ORDER BY payment_date DESC, created_at DESC'),
@@ -114,7 +115,7 @@ async function state(env,user){
  const summary={total_ms:totalMs,earned_cents:totalCents,received_cents:paidCents,remaining_cents:totalCents-paidCents,paid_minutes:paidMinutes,unpaid_minutes:Math.max(0,Math.round(totalMs/60000)-paidMinutes),jobs_finished:jobs.filter(j=>j.status==='finished').length,maintenance:shares};
  const extras={maintenance,payments,users,summary};
  if(user.role==='admin')extras.audit=await fetchAll(env.DB,`SELECT a.*,u.name actor_name FROM audit_log a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100`);
- return {...base,...extras};
+ return v3State(env,user,{...base,...extras});
 }
 async function uploadFile(request,env,user){
  const contentType=request.headers.get('Content-Type')||'';
@@ -202,6 +203,8 @@ async function handler(request,env){
   return json({ok:true},200,{'Set-Cookie':`${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`});
  }
  if(path==='/api/state'&&method==='GET')return json(await state(env,user));
+ const v3Response=await v3Route(request,env,user,at);
+ if(v3Response)return v3Response;
  if(path==='/api/upload'&&method==='POST')return uploadFile(request,env,user);
  const matchFile=path.match(/^\/api\/files\/([a-f0-9-]{36})$/);
  if(matchFile&&method==='GET')return fileResponse(env,user,matchFile[1]);
@@ -282,6 +285,7 @@ async function handler(request,env){
   }
   if(action==='finish'){
    assert(job.status!=='finished','Obra já encerrada.',409);
+   assert(!job.photo_requirement,'Finalize esta obra pelo formulário de 3 fotos.',409);
    const endMeter=optionalMeter(b.end_meter,'Horímetro final');
    assert(endMeter===null||job.start_meter===null||endMeter>=job.start_meter,'Horímetro final não pode ser menor que o inicial.');
    const fId=b.end_file_id?requireString(b.end_file_id,'Foto final',60):null;
@@ -399,6 +403,7 @@ export default {async fetch(request,env){
   return await handler(request,env);
  }catch(e){
   if(e instanceof HttpError)return error(e.message,e.status);
+  if(e?.status&&e.status>=400&&e.status<=499)return error(e.message,e.status);
   const message=String(e?.message||'');
   console.error('API error',e);
   if(message.includes('UNIQUE constraint failed'))return error('Já existe um registro com esses dados ou uma obra em andamento.',409);
