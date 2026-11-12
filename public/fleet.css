@@ -1,0 +1,44 @@
+/* Frota e operações independentes de cada máquina. */
+.fleet-summary{display:flex;gap:10px;flex-wrap:wrap;margin:15px 0;color:#526579;font-size:13px}
+.fleet-summary span{padding:7px 12px;background:#f0f5fa;border:1px solid #dfe8ee;border-radius:9px}
+.fleet-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:16px}
+.fleet-card{min-width:0;border:1px solid #e0e7ee;border-radius:16px;background:#fff;overflow:hidden;display:flex;flex-direction:column}
+.fleet-picture{width:100%;aspect-ratio:16/10;background:#eef2f5;overflow:hidden}
+.fleet-picture img{width:100%;height:100%;object-fit:cover}
+.fleet-placeholder{font-size:68px;display:grid;place-items:center;height:100%}
+.fleet-info{padding:17px;display:flex;flex-direction:column;gap:10px;flex:1}
+.fleet-info h3{font-size:17px;margin:0;line-height:1.32;color:#15283b}
+.fleet-code{font-size:11px;font-weight:800;letter-spacing:.09em;color:#229a78}
+.fleet-details{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:#627287}
+.fleet-stats{display:flex;gap:20px;border-top:1px solid #e8edf2;padding-top:13px}
+.fleet-stats>div{display:flex;flex-direction:column;gap:3px;color:#64758b;font-size:12px}
+.fleet-stats strong{font-size:21px;color:#172e42}
+.fleet-form-preview{display:block;width:110px;height:90px;object-fit:cover;margin-top:9px;border-radius:10px}
+.fleet-machine-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:9px 0}
+.fleet-option{display:flex;align-items:center;gap:9px;min-width:0;min-height:74px;padding:9px;border:1px solid #dce6ec;background:#fff;border-radius:10px;cursor:pointer}
+.fleet-option:has(input:checked){background:#ebfff7;border-color:#18ad82;box-shadow:inset 0 0 0 1px #18ad82}
+.fleet-option:has(input:disabled){opacity:.52;cursor:not-allowed}
+.fleet-option input[type=checkbox]{width:18px;height:18px;accent-color:#19a780;flex-shrink:0}
+.fleet-option strong{display:block;font-size:12px;color:#193044;line-height:1.3}
+.fleet-option small{display:block;font-size:11px;color:#748296;line-height:1.5}
+.fleet-thumb{width:43px;height:43px;background:#edf1f5;border-radius:7px;overflow:hidden;display:grid;place-items:center;flex-shrink:0}
+.fleet-thumb img{width:100%;height:100%;object-fit:cover}
+.fleet-chip{display:inline-block;margin:2px 2px 2px 0;font-size:11px;font-weight:750;color:#167959;background:#e2f9ef;border-radius:6px;padding:4px 6px}
+.fleet-operations{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:15px;margin-top:16px}
+.fleet-operation{min-width:0;border:1px solid #dfebf1;border-radius:15px;background:#fff;padding:15px}
+.fleet-operation-title{display:flex;gap:10px;align-items:center;min-width:0;margin-bottom:14px}
+.fleet-operation-title img{width:56px;height:56px;object-fit:cover;border-radius:10px;flex:0 0 auto}
+.fleet-operation-title>span:first-child{display:grid;place-items:center;width:56px;height:56px;background:#f1f4f6;border-radius:10px}
+.fleet-operation-title>div{min-width:0;flex:1}
+.fleet-operation-title h3{font-size:15px;margin:0;line-height:1.35}
+.fleet-operation-title p{margin:4px 0 0}
+.fleet-operation .counter{font-size:clamp(28px,4vw,46px)}
+.fleet-operation .counterbox{padding:20px 12px}
+.fleet-operation .row-actions{margin-top:12px}
+@media(max-width:740px){
+ .fleet-grid,.fleet-operations,.fleet-machine-options{grid-template-columns:minmax(0,1fr)}
+ .fleet-operation .row-actions{display:flex;flex-wrap:wrap;gap:8px}
+ .fleet-operation .row-actions .button{flex:1;min-width:120px}
+ .fleet-summary{gap:5px}
+ .fleet-summary span{padding:6px 8px}
+}
