@@ -20,6 +20,8 @@ jobs:
       - run: npm test
       - run: node --check src/index.js
       - run: node --check src/v3.js
+      - run: node --check src/machines.js
       - run: node --check public/app.js
       - run: node --check public/features.js
+      - run: node --check public/fleet.js
       - run: node --check scripts/smoke-test.mjs
