@@ -3,7 +3,7 @@ const previousMachineNav=navItems;
 navItems=function(role){
  const entries=previousMachineNav(role);
  const index=entries.findIndex(e=>e[0]==='jobs');
- entries.splice(index+1,0,['machines','🚜','Máquinas']);
+ entries.splice(index+1,0,['machines','▤','Máquinas']);
  return entries;
 };
 titleMap.machines=['Máquinas','Frota, disponibilidade e horas trabalhadas por equipamento'];
