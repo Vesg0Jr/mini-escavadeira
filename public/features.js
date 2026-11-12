@@ -31,7 +31,10 @@ render=function(){
  sidebar.classList.toggle('v3-collapsed',v3ui.sidebarCollapsed);
  sidebar.classList.toggle('v3-open',v3ui.mobileOpen);
  brand.innerHTML='<span class="v3-logo-frame"><img class="v3-logo" src="/formacerta-branco.png" alt="FormaCerta" /></span>'+
-  '<button type="button" class="v3-side-toggle" data-action="v3-collapse" title="Recolher ou expandir menu" aria-label="Alternar barra lateral">☷</button>';
+  '<button type="button" class="v3-side-toggle" data-action="v3-collapse" '+
+  'title="'+(v3ui.sidebarCollapsed?'Expandir menu':'Recolher menu')+'" '+
+  'aria-label="'+(v3ui.sidebarCollapsed?'Expandir menu lateral':'Recolher menu lateral')+'" '+
+  'aria-expanded="'+String(!v3ui.sidebarCollapsed)+'">'+(v3ui.sidebarCollapsed?'›':'‹')+'</button>';
  const title=header.querySelector('h1');
  if(title)header.insertAdjacentHTML('afterbegin','<button type="button" class="v3-burger" data-action="v3-mobile-menu" aria-label="Abrir ou fechar menu">☰</button>');
  if(v3ui.mobileOpen)sidebar.insertAdjacentHTML('afterend','<button class="v3-backdrop" data-action="v3-mobile-menu" aria-label="Fechar menu"></button>');
@@ -40,8 +43,14 @@ render=function(){
  document.querySelectorAll('.sidebar .nav button').forEach(b=>{
   const item=navItems(state.data.me.role).find(n=>n[0]===b.dataset.nav);
   b.title=item?.[2]||'Abrir seção';
+  b.setAttribute('aria-label',item?.[2]||'Abrir seção');
   // Cada opção já possui um ícone no <span> original. Não o duplique no texto.
  });
+ const logout=sidebar.querySelector('.sidebar-bottom button[data-action="logout"]');
+ if(logout){
+   logout.title='Sair do sistema';
+   logout.setAttribute('aria-label','Sair do sistema');
+ }
 };
 const originalRenderPage=renderPage;
 renderPage=function(){
