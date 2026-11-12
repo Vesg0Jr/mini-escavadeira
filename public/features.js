@@ -292,7 +292,7 @@ function v3OpenForm(kind,recordId){
   dialog.dataset.v3id=x?.id||'';return;
  }
  if(kind==='start'){
-  if(runningJob())return notify('A máquina já está em operação. Encerre a obra atual primeiro.',true);
+  // Cada máquina possui sua própria jornada; não bloquear por outra máquina ativa.
   const selected=orders.some(x=>x[0]===recordId)?recordId:null;
   if(selected){
    const b=v3Select('Obra já agendada',{field:'work_order_id',options:orders},selected)+
@@ -491,6 +491,14 @@ async function v3Submit(event){
  state.pending=true;
  const submit=form.querySelector('[type="submit"]');submit.disabled=true;
  const kind=form.dataset.kind,recordId=dialog.dataset.v3id,data=Object.fromEntries(new FormData(form));
+ if(kind==='quick'||kind==='order') {
+  data.machine_ids=[...form.querySelectorAll('input[name="machine_ids"]:checked')].map(x=>x.value);
+  if(data.machine_ids.length===0){state.pending=false;submit.disabled=false;notify('Selecione ao menos uma máquina para esta obra.',true);return;}
+  if(kind==='quick'&&data.mode==='manual'&&data.start_timing!=='scheduled'&&data.machine_ids.length!==1){
+   state.pending=false;submit.disabled=false;
+   notify('No preenchimento manual, selecione uma máquina por lançamento.',true);return;
+  }
+ }
  try{
   let result;
   if(kind==='change-password'){
