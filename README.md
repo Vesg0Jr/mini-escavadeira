@@ -5,8 +5,9 @@ Sistema web para controle de obra, horímetro, horas, pausas, valores, manutenç
 ## Funcionalidades
 
 - Três perfis: **administrador**, **gestor** e **operador**.
-- Operador informa cliente/obra, leitura inicial do horímetro e anexa foto para começar a contagem.
-- **Desligar** pausa as horas; **Retomar obra** abre novo trecho; **Encerrar obra** exige leitura e foto finais.
+- Operador informa cliente/obra e inicia o cronômetro. A leitura e a foto do horímetro são opcionais nesta versão.
+- **Desligar** pausa as horas; **Retomar obra** abre novo trecho; **Encerrar obra** congela o total. Leitura e foto finais são opcionais.
+- **Registrar horas manualmente:** informe hora inicial, hora final e pausas em **minutos**. As horas são calculadas automaticamente, mas você pode digitar a quantidade de horas a cobrar, desde que não ultrapasse o período sem pausas. O valor é proporcional à tarifa histórica na hora inicial. O registro fica auditado e aparece no dashboard e histórico de obras.
 - Preço inicial **R$ 100,00/h**, calculado proporcionalmente ao segundo. Só administrador altera tarifa. Ao alterar, um trecho em andamento é fechado e outro é aberto na tarifa nova; os antigos não mudam.
 - Dashboard com horas do dia, semana, mês, total, últimos 7 dias, valor recebido e valor a receber.
 - Manutenções com descrição, categoria, comprovante, quem pagou, divisão 50%/50% e reembolso líquido.
@@ -74,3 +75,11 @@ wrangler.jsonc     Configuração e bindings Cloudflare
 ```
 
 Não há chave ou credenciais reais no pacote.
+
+## Registro manual (v2)
+
+Na aba **Operação** ou **Obras**, escolha **Registrar horas manualmente**. Preencha cliente, hora inicial, hora final e as pausas em **minutos inteiros**. Se não digitar as horas trabalhadas, o sistema calcula `(hora final - hora inicial) - pausas`. Se digitar, a quantidade informada prevalece, respeitando o limite do período sem pausas. Ex.: 08h–17h, pausa de 60 minutos = 8h = R$ 800,00 a R$ 100/h.
+
+Registros manuais são encerrados imediatamente, sem iniciar cronômetro. O sistema rejeita horários sobrepostos a obras já cadastradas para evitar duplicidade. Os campos de horímetro e foto podem ficar vazios. Horários são interpretados como horário de Brasília (UTC-3); a cobrança usa a tarifa que estava vigente no início da obra.
+
+Para obras controladas pelo cronômetro, continuam disponíveis início, desligamento, retomada e encerramento. Quem precisar fazer uma correção de horas em obra antiga pode utilizar **Obras → Detalhes → Corrigir horas**, somente como administrador, com justificativa registrada.
