@@ -266,8 +266,13 @@ export async function v3Route(request,env,user,at){
   if(!Number.isFinite(hours)||minutes<1||minutes>4320)fail('Horas previstas inválidas.');
   const op=b.operator_id?idIn(b.operator_id):null;
   if(op&&!await one(env.DB,'SELECT id FROM users WHERE id=? AND active=1',op))fail('Operador inválido.');
-  await env.DB.prepare('UPDATE work_orders SET title=?,service=?,location=?,planned_start=?,planned_end=?,expected_minutes=?,operator_id=?,notes=?,updated_at=? WHERE id=?')
-   .bind(requireText(b.title,'Nome da obra',130),requireText(b.service,'Serviço',200),clean(b.location,240),start,end,minutes,op,clean(b.notes,700),at,id).run();
+  const machines=await selectedMachines(env,b.machine_ids,{start,end,excludeOrder:id});
+  await env.DB.batch([
+   env.DB.prepare('UPDATE work_orders SET title=?,service=?,location=?,planned_start=?,planned_end=?,expected_minutes=?,operator_id=?,notes=?,updated_at=? WHERE id=?')
+    .bind(requireText(b.title,'Nome da obra',130),requireText(b.service,'Serviço',200),clean(b.location,240),start,end,minutes,op,clean(b.notes,700),at,id),
+   env.DB.prepare('DELETE FROM work_order_machines WHERE work_order_id=?').bind(id),
+   ...orderMachineRows(env.DB,id,machines,user.id,at)
+  ]);
   await audit(env,user,'reschedule','work_order',id,{start,end,minutes},at);return json({ok:true});
  }
  if(path==='/api/v3/start'&&method==='POST'){
