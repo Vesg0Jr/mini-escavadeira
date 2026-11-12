@@ -52,7 +52,7 @@ export async function v3State(env,user,base){
  const mapped=base.jobs.map(j=>({...j,pauses:pauses.filter(p=>p.job_id===j.id),photos:photos.filter(p=>p.job_id===j.id),checks:checks.filter(p=>p.job_id===j.id)}));
  return {...base,jobs:mapped,clients,work_orders:relevantOrders,tickets:visible};
 }
-function intervals(rows,now){
+export function intervals(rows,now){
  if(!Array.isArray(rows)||rows.length<1||rows.length>30)fail('Informe de 1 a 30 períodos de motor ligado ou pausas.');
  const result=[];let lastEnd=null;let previous=null;let runCount=0;
  for(const row of rows){
@@ -71,7 +71,7 @@ function intervals(rows,now){
  if(lastEnd-result[0].start>72*3600000)fail('Jornada maior que 72 horas. Divida em obras separadas.');
  return result;
 }
-function splitRates(intervals,history){
+export function splitRates(intervals,history){
  if(!history.length)fail('A tarifa da máquina não está configurada.',503);
  const segments=[];
  for(const x of intervals.filter(x=>x.kind==='run')){
@@ -126,6 +126,7 @@ export async function v3Route(request,env,user,at){
    const op=await one(env.DB,'SELECT id FROM users WHERE id=? AND active=1',assigned);
    if(!op)fail('Operador não encontrado.');
   }
+  if(start<at-300000)fail('A data programada já passou. Escolha uma data futura.');
   const conflict=await one(env.DB,"SELECT id FROM work_orders WHERE status='scheduled' AND planned_start<? AND planned_end>? LIMIT 1",end,start);
   if(conflict&&b.allow_overlap!==true)fail('Já existe uma obra agendada nesse período. Ajuste o horário.',409);
   const tariff=await one(env.DB,'SELECT amount_cents FROM rates ORDER BY effective_at DESC,id DESC LIMIT 1');
@@ -147,6 +148,7 @@ export async function v3Route(request,env,user,at){
   }
   const b=await body(request),start=goodDate(b.planned_start,'Início'),end=goodDate(b.planned_end,'Fim');
   if(end<=start||end-start>72*3600000)fail('Horários inválidos.');
+  if(start<at-300000)fail('Escolha uma data futura para reagendar.');
   const hours=Number(b.expected_hours),minutes=Math.round(hours*60);
   if(!Number.isFinite(hours)||minutes<1||minutes>4320)fail('Horas previstas inválidas.');
   const op=b.operator_id?idIn(b.operator_id):null;
