@@ -184,7 +184,7 @@ function v3Jobs(){
  jobs.map(j=>'<tr><td><strong>'+esc(j.customer)+'</strong><br><span class="muted small">'+esc(j.description)+'</span></td><td>'+datePt(j.started_at)+
  '</td><td>'+hrs(currentDuration(j))+'</td><td>'+money(currentAmount(j))+'</td><td>'+badge(j.status)+'</td><td><div class="row-actions">'+
  '<button class="button light sm" data-action="job-details" data-id="'+j.id+'">Detalhes</button>'+
- (admin?'<button class="button light sm" data-action="v3-job-'+(j.status==='finished'?'reopen':'delete')+'" data-id="'+j.id+'">'+(j.status==='finished'?'Retomar':'Excluir')+'</button>'+
+ (admin?(j.status==='finished'?'<button class="button light sm" data-action="v3-job-reopen" data-id="'+j.id+'">Retomar</button>':'')+
  '<button class="button light sm" data-action="v3-job-delete" data-id="'+j.id+'">Excluir</button>':'')+
  '</div></td></tr>').join('')+'</tbody></table></div>':empty('Nenhuma obra registrada'))+'</section>';
 }
@@ -301,7 +301,7 @@ function v3OpenForm(kind,recordId){
   if(!orders.length)return notify('Agende uma obra antes de lançar períodos manuais.',true);
   const b=v3Select('Cliente e obra *',{field:'work_order_id',options:orders},recordId)+
    '<div class="field wide"><strong>Períodos do motor e pausas</strong><div class="muted small">Digite a data e a hora para cada período. Adicione quantas pausas forem necessárias.</div>'+
-   '<div id="v3-periods">'+v3Period('run',0)+'</div><button class="button light sm" type="button" data-action="v3-add-pause">+ Adicionar pausa e nova partida</button></div>'+
+   '<div id="v3-periods">'+v3Period('run',0)+'</div><div class="row-actions"><button class="button light sm" type="button" data-action="v3-add-pause">+ Adicionar pausa</button><button class="button light sm" type="button" data-action="v3-add-run">+ Partida do motor</button></div></div>'+
    v3Control('Horímetro inicial (opcional)','start_meter','','type="number" min="0" step="0.01"')+
    v3Control('Horímetro final (opcional)','end_meter','','type="number" min="0" step="0.01"')+
    '<div class="field wide"><label>Fotos finais da obra — mínimo 3</label><div class="v3-photo-fields">'+
@@ -313,10 +313,10 @@ function v3OpenForm(kind,recordId){
  }
 }
 function v3Period(kind,n){
- const title=kind==='run'?'Motor ligado':'Pausa '+n;
+ const title=kind==='run'?'Motor ligado · Partida '+(n+1):'Pausa '+n;
  return '<div class="v3-period" data-kind="'+kind+'"><h4>'+title+'</h4>'+
-  '<div class="v3-period-fields"><label>De<input type="datetime-local" name="period_start" required /></label>'+
-  '<label>Até<input type="datetime-local" name="period_end" required /></label></div>'+
+  '<div class="v3-period-fields"><label>'+(kind==='run'?'Partida do motor':'Início da pausa')+'<input type="datetime-local" name="period_start" required /></label>'+
+  '<label>'+(kind==='run'?'Motor desligado / fim':'Fim da pausa')+'<input type="datetime-local" name="period_end" required /></label></div>'+
   (kind==='pause'?'<div class="field"><label>Motivo da pausa *<input name="reason" required placeholder="Ex.: almoço, abastecimento" /></label></div>':'')+
   '</div>';
 }
@@ -337,7 +337,14 @@ clickAction=async function(action,id){
  if(action==='v3-add-pause'){
   const area=dialog.querySelector('#v3-periods'),idx=area.querySelectorAll('[data-kind="pause"]').length+1;
   if(idx>12)return notify('Limite de 12 pausas por lançamento.',true);
-  area.insertAdjacentHTML('beforeend',v3Period('pause',idx)+v3Period('run',idx));
+  area.insertAdjacentHTML('beforeend',v3Period('pause',idx));
+  return;
+ }
+ if(action==='v3-add-run'){
+  const area=dialog.querySelector('#v3-periods');
+  if(!area)return;
+  if(area.lastElementChild?.dataset.kind!=='pause')return notify('Adicione uma pausa antes de começar outra partida.',true);
+  area.insertAdjacentHTML('beforeend',v3Period('run',area.querySelectorAll('[data-kind="run"]').length));
   return;
  }
  if(action==='v3-client-form')return v3OpenForm('client',id);
