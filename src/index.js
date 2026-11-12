@@ -207,12 +207,32 @@ async function handler(request,env){
   validatePassword(b.new_password);
   assert(b.new_password===b.confirm_password,'As senhas não conferem.',400);
   const tokenHash=await sha256(token);
-  const record=await env.DB.prepare(`SELECT t.user_id,u.username FROM password_reset_tokens t
+  let record=await env.DB.prepare(`SELECT t.user_id,u.username FROM password_reset_tokens t
     JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.used_at IS NULL
     AND t.expires_at>? AND u.username=? AND u.active=1`).bind(tokenHash,at,username).first();
+  let secretRecovery=false;
+  // Alternativa de recuperação configurada pelo proprietário no Secret do Worker.
+  // A senha só pode ser trocada uma vez por código de recuperação, mesmo se o Secret não for apagado.
+  if(!record && username==='admin.geral' && typeof env.ADMIN_RECOVERY_KEY==='string' &&
+     /^[a-f0-9]{64}$/i.test(env.ADMIN_RECOVERY_KEY) && token===env.ADMIN_RECOVERY_KEY.toLowerCase()){
+    const u=await env.DB.prepare("SELECT id,username FROM users WHERE username=? AND role='admin' AND active=1")
+      .bind(username).first();
+    const used=await env.DB.prepare('SELECT token_hash FROM password_reset_tokens WHERE token_hash=?').bind(tokenHash).first();
+    if(u&&!used){record={user_id:u.id,username:u.username};secretRecovery=true;}
+  }
   assert(record,'Código de recuperação inválido ou expirado.',400);
   const salt=id(),pass=await hashPassword(b.new_password,salt);
-  const statements=[
+  const statements=secretRecovery?[
+   env.DB.prepare(`UPDATE users SET password_hash=?,password_salt=? WHERE id=? AND NOT EXISTS
+      (SELECT 1 FROM password_reset_tokens WHERE token_hash=?)`)
+      .bind(pass,salt,record.user_id,tokenHash),
+   env.DB.prepare('INSERT INTO password_reset_tokens(token_hash,user_id,expires_at,used_at,created_at) VALUES(?,?,?,?,?)')
+      .bind(tokenHash,record.user_id,at,at,at),
+   env.DB.prepare('DELETE FROM user_sessions WHERE user_id=?').bind(record.user_id),
+   env.DB.prepare('DELETE FROM login_limits WHERE username=?').bind(username),
+   env.DB.prepare('INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)')
+      .bind(id(),record.user_id,'password_recovered','user',record.user_id,JSON.stringify({method:'cloudflare_secret_one_time'}),at)
+  ]:[
    env.DB.prepare(`UPDATE users SET password_hash=?,password_salt=? WHERE id=? AND EXISTS
       (SELECT 1 FROM password_reset_tokens WHERE token_hash=? AND user_id=? AND used_at IS NULL AND expires_at>?)`)
       .bind(pass,salt,record.user_id,tokenHash,record.user_id,at),
