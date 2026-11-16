@@ -1,4 +1,5 @@
-/* Acerto financeiro 50/50: gestor envia comprovante, proprietário confere.
+/* Locação: Renan paga o valor/hora combinado; manutenção 50/50.
+   Gestor envia comprovante, proprietário confere.
    As funções de cálculo vêm do servidor; nunca calcular abatimentos pelo navegador. */
 const previousFinanceForm=openForm;
 const previousFinanceClick=clickAction;
@@ -7,17 +8,23 @@ renderPayments=function(){
  const d=state.data,p=d.payments||[],fin=d.summary?.settlement||{};
  const owner=!!d.can_approve_payments,manager=d.me.role==='manager';
  const pending=p.filter(x=>x.status==='pending');
+ const agreement='<section class="panel finance-agreement">'+
+  '<span class="eyebrow">Como funciona o acerto</span>'+
+  '<h2>Renan aluga a sua máquina e paga a você</h2>'+
+  '<p>Tarifa atual da locação: <strong>'+money(d.current_rate_cents)+'/h</strong>, já com o preço reduzido combinado. <strong>O operador é por conta do Renan.</strong></p>'+
+  '<p class="muted small">Cada hora registrada gera o valor da locação a receber, sem dividir novamente por dois. Somente as manutenções são rateadas em 50% para cada um.</p>'+
+  '</section>';
  const cards='<div class="cards">'+
-  metric('Parte do gestor pelas horas (50%)',money(fin.hours_share_cents),'Metade do faturamento das horas')+
-  metric('Acerto das manutenções',money(fin.maintenance_adjustment_cents),'Positivo: gestor deve; negativo: crédito')+
-  metric('Pagamentos aprovados',money(fin.paid_cents),'Somente valores já conferidos')+
-  metric('Renan ainda deve',money(fin.manager_owes_cents),'Saldo após pagamentos e manutenções')+
-  metric('Crédito de Renan',money(fin.manager_credit_cents),'Saldo favorável ao gestor')+
-  metric('Pagamentos pendentes',money(fin.pending_cents),pending.length+' aguardando conferência')+
+  metric('Locação que Renan deve pagar',money(fin.rental_due_cents??fin.earned_cents),'Horas × tarifa de locação registrada')+
+  metric('Manutenção — acerto 50/50',money(fin.maintenance_adjustment_cents),'Positivo: Renan reembolsa você; negativo: abate')+
+  metric('Você já recebeu de Renan',money(fin.paid_cents),'Pagamentos aprovados por você')+
+  metric('Renan ainda deve a você',money(fin.manager_owes_cents),'Locação + manutenção − valores recebidos')+
+  metric('Saldo a favor de Renan',money(fin.manager_credit_cents),'Apenas quando houver crédito após os acertos')+
+  metric('Pagamentos a conferir',money(fin.pending_cents),pending.length+' aguardando aprovação')+
  '</div>';
- let html=cards+'<section class="panel"><div class="panel-head"><div><h2>Pagamentos e comprovantes</h2>'+
-  '<p class="muted small">Cada pagamento é conferido antes de abater o saldo.</p></div>'+
-  '<button class="button primary sm" data-action="payment-form">+ Registrar pagamento</button></div>';
+ let html=agreement+cards+'<section class="panel"><div class="panel-head"><div><h2>Recebimentos da locação</h2>'+
+  '<p class="muted small">Renan paga ao proprietário; o comprovante é conferido antes de abater o saldo.</p></div>'+
+  '<button class="button primary sm" data-action="payment-form">'+(manager?'+ Informar pagamento':'+ Registrar recebimento')+'</button></div>';
  if(p.length){
   html+='<div class="tblwrap"><table><thead><tr><th>Data</th><th>Valor</th><th>Horas informadas</th><th>Situação</th>'+
    '<th>Comprovante</th><th>Observações</th><th>Ações</th></tr></thead><tbody>'+
@@ -40,8 +47,8 @@ renderPayments=function(){
    }).join('')+'</tbody></table></div>';
  }else html+=empty('Ainda não há pagamentos registrados.');
  html+='</section><div class="notice">'+
-   (manager?'Envie o comprovante para análise. O saldo só será atualizado quando o pagamento for aprovado.':
-    'Confira o comprovante e o valor antes de aprovar. Se houver erro, recuse com uma justificativa para que o gestor faça novo lançamento.')+
+   (manager?'Renan paga a locação da máquina, com o operador por conta dele. Envie o comprovante para análise; o saldo será abatido após a aprovação.':
+    'Este é o valor que Renan paga a você pela locação. Confira o comprovante antes de aprovar. Somente as manutenções são divididas meio a meio.')+
    '</div>';
  return html;
 };
@@ -60,9 +67,9 @@ function financeForm(recordId){
    '<label>Comprovante do pagamento '+(required?'*':'')+'</label>'+
    '<input type="file" name="payment_file" accept="image/jpeg,image/png,image/webp,application/pdf" '+(required?'required':'')+' />'+
    '<small>Foto ou PDF do comprovante, até 8 MB.</small></div>';
- const note='<div class="notice">O pagamento será marcado como <strong>'+(d.me.role==='manager'?'aguardando aprovação':'aprovado pelo administrador')+
+ const note='<div class="notice">Este é um pagamento da locação de Renan ao proprietário. O registro será marcado como <strong>'+(d.me.role==='manager'?'aguardando aprovação':'aprovado pelo administrador')+
   '</strong>. Somente pagamentos aprovados abatem o saldo.</div>';
- modal(x?'Corrigir pagamento pendente':'Registrar pagamento',note+formShell('finance-payment',fields,x?'Salvar correção':'Enviar pagamento'));
+ modal(x?'Corrigir pagamento pendente':d.me.role==='manager'?'Informar pagamento ao proprietário':'Registrar recebimento de Renan',note+formShell('finance-payment',fields,x?'Salvar correção':d.me.role==='manager'?'Enviar comprovante':'Registrar recebimento'));
  dialog.dataset.financeId=x?.id||'';
 }
 function financeReview(recordId,action){
