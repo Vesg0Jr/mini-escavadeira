@@ -492,6 +492,28 @@ async function handler(request,env){
    .bind(uid,name,username,role,p,salt,user.id,at).run();
   await log(env,user,'create','user',uid,{name,username,role});return json({ok:true,id:uid},201);
  }
+ const passwordPath=path.match(/^\/api\/users\/([a-f0-9-]{36})\/password$/);
+ if(passwordPath&&method==='POST'){
+  requireRole(user,'admin');
+  const target=await env.DB.prepare('SELECT id,name,username,password_hash,password_salt FROM users WHERE id=?')
+   .bind(passwordPath[1]).first();
+  assert(target,'Usuário não encontrado.',404);
+  assert(target.id!==user.id,'Para alterar sua própria senha, use Minha senha.',403);
+  const b=await bodyJson(request);
+  validatePassword(b.new_password);
+  assert(b.new_password===b.confirm_password,'As senhas não conferem.');
+  assert(await hashPassword(b.new_password,target.password_salt)!==target.password_hash,'Escolha uma senha diferente da atual.');
+  const salt=id(),pass=await hashPassword(b.new_password,salt);
+  await env.DB.batch([
+   env.DB.prepare('UPDATE users SET password_hash=?,password_salt=? WHERE id=?').bind(pass,salt,target.id),
+   env.DB.prepare('DELETE FROM user_sessions WHERE user_id=?').bind(target.id),
+   env.DB.prepare('DELETE FROM login_limits WHERE username=?').bind(target.username),
+   env.DB.prepare('UPDATE password_reset_tokens SET used_at=? WHERE user_id=? AND used_at IS NULL').bind(at,target.id),
+   env.DB.prepare('INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?,?)')
+    .bind(id(),user.id,'password_reset_by_admin','user',target.id,JSON.stringify({method:'admin_panel'}),at)
+  ]);
+  return json({ok:true,message:'Senha redefinida. O usuário deverá entrar novamente.'});
+ }
  const userPath=path.match(/^\/api\/users\/([a-f0-9-]{36})$/);
  if(userPath&&method==='PUT'){
   requireRole(user,'admin');const old=await env.DB.prepare('SELECT * FROM users WHERE id=?').bind(userPath[1]).first();assert(old,'Usuário não encontrado.',404);
